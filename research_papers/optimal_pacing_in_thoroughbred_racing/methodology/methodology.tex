@@ -1,0 +1,519 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage[bookmarks=true,bookmarksopen=true,bookmarksnumbered=true,hidelinks]{hyperref}
+
+\title{Optimal Pacing in Thoroughbred Racing:\\
+A Log-Reparameterized Variational Formulation with Bounded Force}
+\author{J. E. Whitehead III \\ Head of R\&D, SVVVL}
+\date{}
+
+\DeclareMathOperator{\sigmoid}{sigmoid}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator{\clamp}{clamp}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+We formulate the optimal-pacing problem for a thoroughbred horse as a calculus-of-variations problem on three reparameterized states: velocity $v$, the logarithm of the anaerobic energy reserve $u = \ln(m/m_0)$, and the logit of the propulsive force $\psi = \logit(f/f_M)$. The first reparameterization guarantees positivity of the reserve. For the force we use a convex blend, $f = \sigma(m)/v + (f_M \phi_f(m) - \sigma(m)/v)\,\sigmoid(\psi)$, floored at the aerobic-supply-equivalent force $\sigma/v$ and capped at the fatigue-modulated $f_M \phi_f$: it keeps the force bounded \emph{and} drains the anaerobic reserve monotonically, at the cost of relaxing strict first-order optimality where the floor binds. A smooth asymmetric saturation on $\psi'$ further bounds the slew rate of the force, in the spirit of Mercier and Aftalion's bang-bang control limits, but without switching. The Euler--Lagrange system collapses to three first-order ordinary differential equations in $(v, u, \psi)$. The terminal reserve is not forced to zero: we treat the finishing fraction $\varphi_T = m(d)/m(0) \in (0, 1)$ as a horse-specific quantity learned from data, so the trajectory is the Euler--Lagrange-stationary path under a fixed terminal reserve rather than full depletion. Optimal trajectories of velocity, energy reserve, and propulsive force are recovered as derived quantities. The numerical solution --- Hermite--Simpson collocation of the boundary-value problem --- and the computational stack are given in Section~\ref{sec:numerics}.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+\section{The Problem}
+
+The horse runs a distance $d$. The clock runs while it does. We wish to minimize
+\begin{equation}
+J = \int_0^d \frac{1}{(d - s + \varepsilon)^{\alpha}} \cdot \frac{1}{v(s)}\, ds,
+\end{equation}
+where $s \in [0, d]$ is the distance from the start, measured in meters, and $v(s)$ is the instantaneous velocity. The factor $(d - s + \varepsilon)^{-\alpha}$, with $\alpha \geq 0$ and small $\varepsilon > 0$, weights the cost integrand more heavily near the finish, so that time lost near the wire counts more than time lost early; $\varepsilon$ regularizes the endpoint. Setting $\alpha = 0$ recovers the undiscounted race time. The state variables and physical parameters are
+\begin{align*}
+v(s) &: \text{velocity, } \mathrm{m\,s^{-1}}, \\
+m(s) &: \text{anaerobic energy reserve per unit mass, } \mathrm{m^2 s^{-2}} \;(= \mathrm{J\,kg^{-1}}), \\
+f(s) &: \text{propulsive force per unit mass, } \mathrm{m\,s^{-2}} \;(= \mathrm{N\,kg^{-1}}), \\
+\sigma(m) &: \text{aerobic supply per unit mass at reserve } m, \; \mathrm{m^2 s^{-3}} \;(= \mathrm{W\,kg^{-1}}), \\
+\tau &: \text{friction timescale, s.}
+\end{align*}
+The aerobic supply $\sigma(m) > 0$ is hump-shaped on $[0, m_0]$. Physiologically, when $m$ is near $m_0$ the aerobic system has not been activated and $\sigma$ is small. As $m$ decreases, oxygen uptake ramps up and $\sigma$ rises to an interior maximum. Near depletion ($m \to 0^+$), the aerobic system can no longer fully sustain peak output and $\sigma$ falls --- but it does not vanish, nor does it fall below the warm-up value: $0 < \sigma(m_0) < \sigma(0) < \max_m \sigma(m)$. The maximal force per unit mass is $f_M$ ($\mathrm{m\,s^{-2}}$).
+
+Following Mercier and Aftalion, the dynamics, written in the spatial variable, are
+\begin{align}
+v'(s) &= \frac{1}{v(s)}\left(-\frac{v(s)}{\tau} + f(s)\right), \\
+m'(s) &= \frac{\sigma(m(s)) - f(s)\, v(s)}{v(s)},
+\end{align}
+with boundary conditions $v(0) = v_0 > 0$, $m(0) = m_0$, $m(d) = \varphi_T\, m_0$ with $0 < \varphi_T < 1$, and the state constraints $m(s) \geq 0$ and $0 \leq f(s) \leq f_M$. We drop the slope term in $\alpha(s)$ and the curvature constraint involving $c(s)$.
+
+The first equation is Newton's law per unit mass with linear resistance. The second is the energy balance: aerobic supply $\sigma(m)$ less the mechanical power $fv$, all per unit velocity to convert from time to space. The map between $f$ and the state is one-to-one given $v$ and $m'$, and that fact is what lets us eliminate $f$ entirely. The strict time-minimizing optimum depletes the reserve fully ($m(d) \to 0$): a horse that finishes with reserve has not run the time-minimizing race. Real horses, however, finish with reserve to spare. We therefore relax the hard endpoint to a learned finishing fraction $\varphi_T = m(d)/m(0) \in (0, 1)$ and solve the Euler--Lagrange system as a fixed-endpoint boundary-value problem conditional on $\varphi_T$ --- the horse runs the time-optimal race \emph{subject to} finishing with fraction $\varphi_T$ of its reserve. We infer $\varphi_T$ for each horse (Section~11).
+
+The standard formulation has three boundary singularities. The state constraint $m \geq 0$ binds at the endpoint and is driven negative under non-optimal control. The magnitude bound $0 \leq f \leq f_M$ produces bang-bang structure under direct optimal control. The slew-rate bound $u_-/v \leq f' \leq u_+/v$ on the control likewise produces switching. We circumvent all three by reparameterizing each constrained state.
+
+\section{A Smooth Form for the Aerobic Supply}
+
+The aerobic supply curve $\sigma(m)$ has a known qualitative shape. At the start of a race, $\dot V_{O_2}$ has not yet ramped to its maximum --- the horse is warming up, and $\sigma$ is depressed. As the race progresses and $m$ depletes, $\sigma$ rises to its plateau $\sigma_{\max}$. Near the finish, when anaerobic stores can no longer compensate for oxygen deficit, $\sigma$ falls again. In short: $\sigma(m)$ is hump-shaped on $[0, m_0]$, low at both ends and peaking in the middle.
+
+A smooth functional form that captures both knees is the product of two logistic factors:
+\begin{equation}\label{eq:sigma}
+\sigma(m) = \sigma_{\max}\,g_1(m)\,g_2(m),
+\end{equation}
+where
+\[
+g_1(m) = \frac{1}{1 + e^{\beta_1(m - m_1)/m_0}},\qquad
+g_2(m) = \frac{1}{1 + e^{-\beta_2(m - m_2)/m_0}},
+\]
+with $m_1 > m_2$ and $\beta_1, \beta_2 > 0$. The factor $g_1$ encodes the warm-up: it is near zero at $m \approx m_0$ (race start) and near one for $m \ll m_1$. The factor $g_2$ encodes the fall-off: it is near one for $m \gg m_2$ and near zero as $m \to 0$. Their product traces the hump.
+
+The five parameters $\sigma_{\max}, m_1, m_2, \beta_1, \beta_2$ admit physiological interpretation. $\sigma_{\max}$ is the peak aerobic power per unit mass --- essentially $\dot V_{O_2,\max}$ in energy units. The thresholds $m_1$ and $m_2$ locate the warm-up and fall-off knees in the energy reserve. The slopes $\beta_1$ and $\beta_2$ control the sharpness of the transitions. The paper of Mercier and Aftalion uses a piecewise-linear ansatz with the same physiological content; the smooth form here is its differentiable cousin.
+
+For the calculus of variations we need $\sigma'(m)$. Logarithmic differentiation gives, using $g_i'/g_i = \mp\beta_i(1 - g_i)/m_0$ (with the sign chosen by which factor is decreasing or increasing),
+\begin{equation}\label{eq:sigmaprime}
+\sigma'(m) = \frac{\sigma(m)}{m_0}\bigl[\beta_2\,w_2(m) - \beta_1\,w_1(m)\bigr],
+\end{equation}
+where $w_1(m) = 1 - g_1(m)$ and $w_2(m) = 1 - g_2(m)$ are the activation indicators of the warm-up and fall-off regimes, respectively. In the plateau, $w_1 \approx w_2 \approx 0$ and $\sigma'(m) \approx 0$. Near the start, $w_1$ is order one and $\sigma'(m) < 0$. Near the finish, $w_2$ is order one and $\sigma'(m) > 0$.
+
+\section{The Log Reparameterization of the Reserve}
+
+We reparameterize the reserve on the multiplicative scale by setting
+\begin{equation}
+u(s) = \ln\!\left(\frac{m(s)}{m_0}\right),
+\end{equation}
+which inverts to
+\begin{equation}
+m(s) = m_0\, e^{u(s)}.
+\end{equation}
+The new state $u(s) \in \mathbb{R}$ is unconstrained, while $m(s) > 0$ structurally. The boundary condition $m(0) = m_0$ becomes $u(0) = 0$. The terminal reserve $m(d) = \varphi_T\, m_0$ becomes $u(d) = \ln \varphi_T$, a finite negative terminal value --- a fixed-endpoint boundary condition --- rather than the degenerate $u(d) = -\infty$ of full depletion.
+
+The state equations become
+\begin{equation}
+v'(s) = -\frac{1}{\tau} + \frac{f(s)}{v(s)}, \qquad u'(s) = \frac{1}{m(u(s))}\left(\frac{\sigma(m(u(s)))}{v(s)} - f(s)\right),
+\end{equation}
+with $m(u) = m_0 e^u$ understood throughout. The variational problem is now over the pair $(v(s), u(s))$, with $f(s)$ recovered as a derived quantity.
+
+Two equivalent expressions for $f$ follow from (8):
+\begin{equation}
+f = v(v' + 1/\tau) \quad \text{(from $v$-dynamics)}, \qquad f = \frac{\sigma(m)}{v} - m\, u' \quad \text{(from $u$-dynamics)}.
+\end{equation}
+Equating the two yields the on-shell algebraic identity
+\begin{equation}
+v^2 (v' + 1/\tau) = \sigma(m) - m\, v\, u',
+\end{equation}
+which holds along the optimal trajectory and serves as a numerical consistency check.
+
+\section{The Lagrangian}
+
+The two state equations (8) each give one expression. The $v$-dynamic, solved for $1/v$, gives the cost integrand:
+\[
+\frac{1}{v} = \frac{v' + 1/\tau}{f}.
+\]
+The $u$-dynamic, solved for $f$, gives:
+\[
+f = \frac{\sigma(m)}{v} - mu'.
+\]
+Substituting the second into the first eliminates $f$ from $1/v$, leaving the cost integrand as a function of $(v, v', u, u')$ alone. Multiplying by the power-law discount factor that weights time more heavily near the finish, the Lagrangian is
+\begin{equation}
+L(s, v, v', u, u') = W(s) \cdot \frac{v(v' + 1/\tau)}{\sigma(m(u)) - m(u)\, v\, u'}, \qquad W(s) = \frac{1}{(d - s + \varepsilon)^{\alpha}},
+\end{equation}
+with $\alpha \geq 0$ and small $\varepsilon > 0$ regularizing the endpoint. The minimized cost is $\int_0^d L\, ds$. Both equivalent forms of $L$ --- the variational form (11) and its on-shell value $L = W(s)/v$ --- will be used: the first for variation, the second for simplification on-shell.
+
+The discount has logarithmic rate
+\begin{equation*}
+\rho(s) := \frac{W'(s)}{W(s)} = \frac{\alpha}{d - s + \varepsilon},
+\end{equation*}
+which is positive and grows toward the finish. The $s$-dependence breaks the autonomous structure of the Lagrangian, but the EL equations go through unchanged with $\partial L/\partial s$ now nonzero.
+
+\section{Euler--Lagrange Equations}
+
+The variations in $v$ and $u$ produce two EL equations. The first, derived in Appendix~\ref{app:el1}, is the law of motion for the propulsive force:
+\begin{equation}
+\frac{f'(s)}{f(s)} = \rho(s) - \frac{\sigma(m(s))}{v(s)^3} = \frac{\alpha}{d - s + \varepsilon} - \frac{\sigma(m(s))}{v(s)^3}.
+\end{equation}
+The second, derived in Appendix~\ref{app:el2}, gives a complementary first-order expression for the same growth rate:
+\begin{equation}
+\frac{f'(s)}{f(s)} = \rho(s) - \frac{v'(s)}{v(s)} + \frac{\sigma'(m(s))}{v(s)}.
+\end{equation}
+Both EL equations carry the discount through $\rho(s)$ identically; equating them yields an optimality identity in which $\rho(s)$ cancels (Section~5).
+
+\section{The Optimality Identity}
+
+The two EL equations constrain the same trajectory. Equating the EL1 and EL2 expressions for $f'/f$ in (12) and (13), the discount $\rho(s)$ cancels and the result is
+\begin{equation}
+\sigma'(m(s)) = v'(s) - \frac{\sigma(m(s))}{v(s)^2}.
+\end{equation}
+This is the optimality identity, derived in Appendix~\ref{app:identity}. All three terms have units of inverse seconds. The identity is a pointwise consequence of both EL conditions holding simultaneously and is independent of the discount; it serves both as an analytical lever and as a diagnostic that a numerically integrated trajectory remains on the optimal manifold.
+
+Dividing (14) through by $v$ and substituting $\sigma(m)/v^3$ from EL1 (12) yields the rate-balance form
+\begin{equation}
+\frac{f'(s)}{f(s)} = \rho(s) - \frac{v'(s)}{v(s)} + \frac{\sigma'(m(s))}{v(s)},
+\end{equation}
+which coincides with the EL2-derived expression (13) as it must. Each term is a growth rate with respect to location, with units of inverse meters: $f'/f$ the growth rate of force, $v'/v$ the growth rate of velocity, $\sigma'(m)/v$ the growth rate of aerobic supply (since $d\sigma/ds = \sigma'(m) m'$ and $\sigma'(m)/v$ is the corresponding contribution per unit velocity), and $\rho(s)$ the growth rate of the discount. The horse runs its optimum when these rates balance pointwise. In the undiscounted limit $\rho \equiv 0$, force and velocity track each other on the aerobic plateau where $\sigma'(m) \approx 0$. With the discount active, $\rho(s)$ raises $f'/f$ everywhere, and grows toward the finish: the optimal trajectory carries more force later than in the undiscounted case.
+
+\section{The Logit Reparameterization of the Force}
+
+The unconstrained law of motion (12) gives $f'/f = \rho(s) - \sigma(m)/v^3$, whose sign is set by the balance between the discount premium and the aerobic drag: $f$ decays when $\sigma/v^3$ dominates and grows when $\rho$ does. We honor the empirical constraint on the force without a switching control by reparameterizing it as a convex blend between an aerobic-supply-equivalent floor $\sigma(m)/v$ and the fatigue-modulated cap $f_M \phi_f(m)$, with $\phi_f(m) \in (0, 1]$ the cap activation defined in Section~9:
+\begin{equation}
+f(s) = \frac{\sigma(m(s))}{v(s)} + \left(f_M \phi_f(m(s)) - \frac{\sigma(m(s))}{v(s)}\right)\sigmoid(\psi(s)), \qquad \psi(s) \in \mathbb{R}.
+\end{equation}
+This floors the force at $\sigma/v$ and caps it at $f_M \phi_f$, so $f(s) \in (\sigma/v, f_M \phi_f)$ structurally. The floor is the point: substituted into the reserve law (8) it gives $u'(s) = (\sigma/v - f)/m = -(f_M \phi_f - \sigma/v)\,\sigmoid(\psi)/m \leq 0$, so the reserve drains monotonically --- removing the spurious regeneration the bare logit map $f = f_M \phi_f\,\sigmoid(\psi)$ admits whenever $\sigma/v$ exceeds $f$. The trade is that the floor breaks the first EL equation where it binds: the force is then the EL-\emph{shaped} effort projected onto the monotone-feasible region rather than the strict optimum (Section~17). Translating the EL law of motion through the logit variable (Appendix~\ref{app:logit}) yields the costate rate, which we retain as the EL-shaped target:
+\begin{equation}
+\psi'_{\star}(s) = \frac{\rho(s) + \sigma'(m)/v - v'/v - (\phi_f'(m)/\phi_f(m))\, m\, u'}{1 - f/(f_M \phi_f(m))}.
+\end{equation}
+The factor $1/(1 - f/(f_M \phi_f(m)))$ stiffens the equation as $f$ approaches the (modulated) cap. The extra term in the numerator, $-(\phi_f'(m)/\phi_f(m))\, m\, u'$, accounts for the fact that the cap itself drifts downward as $m$ depletes; with $u' < 0$ and $\phi_f'(m) \geq 0$, this term is non-positive and pushes $\psi'_\star$ downward, reflecting that the available headroom is shrinking. We use the EL2 form for the EL-implied rate because it remains finite as the aerobic supply varies and exposes the discount and aerobic-sensitivity contributions explicitly.
+
+\section{The Slew-Rate Constraint}
+
+Empirical work (Mercier and Aftalion) imposes a separate slew-rate constraint $u_-/v \leq f' \leq u_+/v$ via bang-bang controls on $df/dt$, with $u_-, u_+ > 0$ asymmetric physiological limits on the rate of force buildup and release. We honor it without switching by bounding $\psi'$, which co-varies with $f'$. Differentiating the blend (16) along the trajectory, with $S = \sigmoid(\psi)$ and the cap written $C = f_M \phi_f(m)$,
+\begin{equation}\label{eq:slew-coupling}
+f'(s) = \underbrace{(\sigma/v)'\,(1 - S) + C'\, S}_{\text{moving floor and cap}} \;+\; \underbrace{\kappa\, \psi'}_{\text{controlled}}, \qquad \kappa = \bigl(C - \sigma/v\bigr)\, S(1 - S),
+\end{equation}
+so the part of the force slew the costate controls is $\kappa\,\psi'$, with the blend envelope $\kappa$ vanishing at the floor ($S \to 0$) and the cap ($S \to 1$). Bounding that controlled slew to $(-a,\, b\,\phi_b(m))$ --- with $a, b > 0$ the unfatigued release and build limits --- therefore means bounding $\psi'$ to the $\psi$-space band $(-A, B)$ with
+\begin{equation}\label{eq:slew-band}
+A(f, m) = \frac{a}{\kappa}, \qquad B(f, m) = \frac{b\, \phi_b(m)}{\kappa},
+\end{equation}
+where $\phi_b(m) \in (0, 1]$ is a second fatigue activation, independent of $\phi_f$, defined in Section~9. Both half-widths diverge precisely where $\kappa$ vanishes, at either force rail. The release limit carries no fatigue modulation --- a horse can always shed force at rate $a$ regardless of depletion --- while the build limit carries $\phi_b(m)$ multiplicatively, since the rate at which force can be built degrades with the reserve.
+
+We set $\psi'$ to a smooth, asymmetric saturation of the EL-predicted rate $\psi'_\star$ (17) into that band:
+\begin{equation}\label{eq:slew-squash}
+\psi'(s) = \frac{B - A}{2} + \frac{A + B}{2}\,\tanh\!\left(\frac{2\,\psi'_{\star}(s) - (B - A)}{A + B}\right),
+\end{equation}
+which maps $\mathbb{R} \to (-A, B)$, has unit slope through the interior, and saturates at $-A$ or $B$ at the extremes. This is a genuine hyperbolic tangent of $\psi'_\star$, $C^\infty$ everywhere. We deliberately avoid the tempting alternative of clamping the normalized rate to $[-1, 1]$ and passing it through $\tanh^{-1}$ before the $\tanh$: that composite is the identity on the clamped argument, so it collapses to a piecewise-linear hard clamp --- kinked at the band edges, with zero gradient beyond them --- whose flat regions are hostile to the gradient-based sampler of Section~\ref{sec:numerics}. The smooth form reaches the same bounds while keeping the law of motion differentiable everywhere. Setting $\psi'$ this way is a modeling choice, not a consequence of the calculus of variations: we abandon strict optimality at the slew boundary in exchange for a smoothly bounded force. When $\psi'_\star$ is interior to $(-A, B)$ the saturation is approximately linear and $\psi'(s) \approx \psi'_{\star}(s)$, recovering the unconstrained optimum; outside, it holds $\psi'$ in the band.
+
+The induced bound on the controlled force slew follows by construction: $\kappa\,\psi' \in (-\kappa A,\, \kappa B) = (-a,\, b\,\phi_b(m))$, the divergent half-widths cancelling the vanishing envelope. Suppressing the moving floor and cap (small away from the knees),
+\begin{equation}\label{eq:slew-fprime}
+-a \;\leq\; f'(s) \;\leq\; b\, \phi_b(m),
+\end{equation}
+asymmetric and fatigue-modulated on the build side alone: force sheds at up to the unfatigued rate $a$, and builds at up to $b\,\phi_b(m)$, which falls toward $b\,\phi_{b,\min}$ as $m \to 0$.
+
+\section{Fatigue-Activation Functions}
+
+The cap on force and the upper slew bound are both modulated by depletion. As the anaerobic reserve $m$ approaches zero, a horse loses headroom both in absolute force and in the rate at which force can be built. We capture each effect with an independent logistic activation in $m$, taking values in $(0, 1]$ and approaching unity at the start of the race.
+
+The cap modulator is
+\begin{equation}
+\phi_f(m) = \phi_{f,\min} + (1 - \phi_{f,\min}) \cdot \frac{1}{1 + e^{-\kappa_f(m - m_f^*)/m_0}},
+\end{equation}
+with floor $\phi_{f,\min} \in (0, 1)$, half-activation reserve $m_f^* \in (0, m_0)$, and steepness $\kappa_f > 0$. As $m \to m_0$, $\phi_f \to 1$ and the cap is the unfatigued $f_M$. As $m \to 0$, $\phi_f \to \phi_{f,\min}$ and the cap settles at $f_M \phi_{f,\min}$, a residual that reflects the horse's ability to generate force on aerobic supply alone.
+
+The slew modulator is
+\begin{equation}
+\phi_b(m) = \phi_{b,\min} + (1 - \phi_{b,\min}) \cdot \frac{1}{1 + e^{-\kappa_b(m - m_b^*)/m_0}},
+\end{equation}
+with independently parameterized floor $\phi_{b,\min} \in (0, 1)$, half-activation reserve $m_b^* \in (0, m_0)$, and steepness $\kappa_b > 0$. Only the upper slew bound carries this factor: the rate at which a horse can build force degrades with depletion, falling from $b$ at $m = m_0$ to $b\, \phi_{b,\min}$ at $m = 0$. The lower bound, governing the rate at which force can be released, is unmodulated; a fatigued horse can always slow its push.
+
+The two activations have separate parameters because the underlying physiologies differ. $\phi_f(m)$ models the loss of peak force-generating capacity as glycogen depletes and lactate accumulates --- a property of muscle contractile capacity. $\phi_b(m)$ models the loss of recruitment speed --- a property of neuromuscular drive. The two need not co-vary.
+
+\section{The Forward System}
+
+The optimal trajectory of $(v, m, f)$ is recovered by solving the two-point boundary-value problem for the three first-order equations
+\begin{equation}
+\begin{cases}
+v'(s) = -\dfrac{1}{\tau} + \dfrac{f}{v(s)}, \\[2ex]
+u'(s) = \dfrac{1}{m_0 e^{u(s)}}\left(\dfrac{\sigma(m_0 e^{u(s)})}{v(s)} - f\right) \;\leq\; 0, \\[2ex]
+\psi'(s) = \dfrac{B - A}{2} + \dfrac{A + B}{2}\,\tanh\!\left(\dfrac{2\psi'_{\star}(s) - (B - A)}{A + B}\right),
+\end{cases}
+\end{equation}
+with $m = m_0 e^{u(s)}$ throughout, $f$ the blend (16), the half-widths $A, B$ of \eqref{eq:slew-band}, and boundary conditions
+\[
+v(0) = v_0, \qquad u(0) = 0 \quad \text{(gate)}, \qquad u(d) = \ln \varphi_T \quad \text{(wire)}.
+\]
+The optimal velocity is the state $v(s)$ directly. The optimal reserve is recovered as $m(s) = m_0 e^{u(s)}$, with $m(s) > 0$ along the trajectory by construction and, by the floor, draining monotonically. The optimal propulsive force is recovered from the blend (16), with $f(s) \in (\sigma/v, f_M \phi_f)$ by construction; the gate force $f(0)$ is read off the selected $\psi(0)$, not supplied as an input.
+
+\paragraph{Two-point boundary-value problem.} The gate costate $\psi(0)$ is the one free boundary unknown, matched to the one terminal condition $u(d) = \ln \varphi_T$ by a shooting or collocation solve. The gate force then falls out as a derived quantity,
+\[
+f_0 = f_M\, \phi_f(m_0)\, \sigmoid(\psi(0)).
+\]
+Because the finishing fraction $\varphi_T$ is sampled (Section~11), every posterior draw fixes the terminal reserve and so poses a well-posed fixed-endpoint problem; a draw whose $\varphi_T$ is unreachable for the rest of $\theta$ fails to solve and is rejected by the likelihood.
+
+The optimality identity (14) is a consequence of the first-order system on-shell and is not used for the solve; it remains useful for analytical inspection and as a numerical diagnostic.
+
+\paragraph{Race mechanics.} EL2 (13) writes the growth rate of force with respect to location as
+\[
+\frac{f'}{f} = \rho(s) + \frac{\sigma'(m)}{v} - \frac{v'}{v},
+\]
+the late-race premium plus the marginal aerobic sensitivity, less the growth rate of velocity. The discount enters as
+\[
+\rho(s) = \frac{\alpha}{d - s + \varepsilon}.
+\]
+Because $\sigma$ is hump-shaped on $[0, m_0]$ and the horse traverses it from right to left as $m$ decreases,
+\[
+\sigma'(m) < 0 \quad \text{near } m_0, \qquad \sigma'(m) \approx 0 \quad \text{at the peak}, \qquad \sigma'(m) > 0 \quad \text{near } 0.
+\]
+The fatigue activations $\phi_f(m)$ and $\phi_b(m)$ overlay this picture. Each is near unity for $m$ near $m_0$ and falls toward its floor as $m \to 0$. They modulate the cap on $f$ and the upper slew bound, respectively, and so set what the horse can actually do once EL2 says what it would.
+
+From the gate, $m$ is near $m_0$. Both fatigue activations are saturated near unity; the cap is the unfatigued $f_M$ and the upper slew rate is the unfatigued $b$. $\sigma'(m)$ is large and negative, but $\rho$ is small and the aerobic term has not yet bitten through specific kinetic energy; what matters dynamically is that EL1 calls for force buildup against a small $v$. the build slew saturates at the unfatigued rate $b$ and $f$ rises along the smooth analog of a bang-bang ramp.
+
+In the body of the race, $\sigma(m)$ traverses its interior maximum, where $\sigma'(m) \approx 0$. The EL2 form reduces to
+\[
+\frac{f'}{f} \approx \rho(s) - \frac{v'}{v}.
+\]
+$m$ has fallen but typically remains above $m_f^*$ and $m_b^*$, so $\phi_f, \phi_b \approx 1$ and the caps are still effectively the unfatigued ones. Force and velocity track each other up to the discount premium. With $\rho$ still modest mid-race, $f$ decays slightly slower than $v$.
+
+Near the finish, three effects compound. The premium $\rho(s)$ grows without bound. $\sigma'(m)$ turns positive as $\sigma$ falls off its peak toward $\sigma(0)$. And the fatigue activations begin to bite: $m$ crosses $m_f^*$ and $m_b^*$, $\phi_f$ pulls the cap down toward $f_M \phi_{f,\min}$, and $\phi_b$ pulls the upper slew rate down toward $b\, \phi_{b,\min}$. The first two effects raise the EL-implied $f'/f$; the third caps how much of that rise the horse can execute. A finishing kick emerges, but bounded twice over: by the modulated cap on $f$ itself, and by the modulated rate at which $f$ can climb. The kick is real but smaller than the unfatigued model would predict, and arrives with $f$ unable to reach the unfatigued $f_M$. The undiscounted, unfatigued limit ($\alpha = 0$, $\phi_f = \phi_b = 1$) recovers monotonic decay through the wire.
+
+\section{Bayesian Inference}
+
+The forward system in Section~10 is deterministic: given a parameter vector $\theta$, the integrator produces a velocity trajectory $\hat v(s; \theta)$ and, derivatively, predicted sector times $\hat{\delta t}_j(\theta) = \int_{s_{j-1}}^{s_j} ds/\hat v(s; \theta)$. Real races deliver noisy sector times, and the parameter vector is what we wish to learn. We approach this with Bayesian inference: for each horse, given its interval race data, we recover a posterior distribution over $\theta$ that combines a physiologically-informed prior with the likelihood of the observed sector times under the model.
+
+\paragraph{Likelihood.} Sector times are positive and right-skewed, with variance scaling with the mean. We model
+\[
+\delta t_j \mid \theta \sim \text{Gamma}\!\left(\frac{1}{\eta},\, \frac{1}{\eta\, \hat{\delta t}_j(\theta)}\right),
+\]
+in shape-rate parameterization, giving $\mathbb{E}[\delta t_j \mid \theta] = \hat{\delta t}_j(\theta)$ and $\text{Var}[\delta t_j \mid \theta] = \eta\, \hat{\delta t}_j(\theta)^2$. The dispersion $\eta$ governs the sector-time coefficient of variation.
+
+\paragraph{Reparameterization for inference.} Each parameter is mapped to an unconstrained scale on which inference is performed. Strictly positive parameters carry a $\ln$ transform. Parameters bounded in $(0, c)$ for some $c$ carry a logit-with-scale transform $\ln(c x / (c - x))$; the finishing fraction $\varphi_T \in (0, 1)$ is the $c = 1$ case, $\ln(x/(1-x))$. The gate force $f_0$ is no longer sampled --- it is derived from the boundary-value solve (Section~10) --- and $\varphi_T$ takes its place in the parameter vector, entering as the terminal condition $u(d) = \ln \varphi_T$ with the Beta prior below. Three reserve quantities $m_0, m_1, m_2$ are reparameterized into independent latents $z_2, z_{12}, z_{01}$ that enforce $0 < m_2 < m_1 < m_0$ by construction:
+\[
+m_2 = e^{z_2}, \qquad m_1 = m_2(1 + e^{z_{12}}), \qquad m_0 = m_1(1 + e^{z_{01}}).
+\]
+
+\paragraph{Priors.} Priors on the transformed scale are normal for $\ln$-transformed parameters and logistic-Beta for parameters with bounded support. Hyperparameter values are anchored to point estimates from the optimal-control identification of Mercier and Aftalion (M\&A) 2020, which fits the analogous deterministic model to three Thoroughbreds in Chantilly. Where M\&A provide a value, the prior mean equals the log of the cross-horse average and the variance corresponds to a coefficient of variation of 0.3 on the natural scale: $\sigma^2 = \ln(1 + 0.3^2) = 0.0862$. Where no published anchor exists, the prior is centered at a physically reasonable value with variance $\sigma^2 = \ln(1 + 0.5^2) = 0.223$, admitting a factor of about 1.6 in either direction at one prior standard deviation. The arguments behind individual values are given in Section~\ref{sec:hypervalues}.
+
+\section{Hyperparameter Values}\label{sec:hypervalues}
+
+This section records the empirical or judgmental basis for each prior hyperparameter. The full set is summarized in the table at the end.
+
+\subsection*{Discount horizon $d$}
+M\&A analyze races of 1300, 1900, and 2100 m. The model's $d$ is not the race distance but the horse-specific horizon at which the late-race premium begins to bite — the location around which the horse times its kick. Their Fig 10 shows $\dot V_{O_2}$ beginning to decrease about 500 m from the finish in the 1900 m race; the kick is timed to that point. The prior is centered at the 1900 m race distance with wide CV 0.5: $\mu_d = \ln(1900) = 7.550$, $\sigma_d^2 = 0.223$.
+
+\subsection*{Endpoint regularizer $\varepsilon$}
+The factor $\varepsilon$ prevents $\rho(s) = \alpha/(d - s + \varepsilon)$ from diverging at $s = d$. Its value sets the scale over which the discount integrand peaks. M\&A identify the final sprint as occupying roughly the last 50–100 m. Centered at $\varepsilon = 50$ m with CV 0.5: $\mu_\varepsilon = \ln(50) = 3.912$, $\sigma_\varepsilon^2 = 0.223$.
+
+\subsection*{Power-law exponent $\alpha$}
+No published value exists for the exponent of the late-race premium. Centered at $\alpha = 1$ with CV 0.5, admitting exponents from roughly 0.4 to 2.5 at one prior SD: $\mu_\alpha = 0$, $\sigma_\alpha^2 = 0.223$.
+
+\subsection*{Friction timescale $\tau$}
+M\&A Tables 1–3: $\tau \in \{3.911, 3.73, 3.637\}$ s, mean 3.76 s. The empirical CV across three horses is 0.04, very tight. The prior uses CV 0.3 to allow broader between-horse variation than the small sample suggests: $\mu_\tau = \ln(3.76) = 1.324$, $\sigma_\tau^2 = 0.0862$.
+
+\subsection*{Maximal force $f_M$}
+M\&A Tables 1–3: $f_M \in \{5.150, 4.74, 5.50\}$ m s$^{-2}$, mean 5.13. Empirical CV 0.07. Prior CV 0.3: $\mu_{f_M} = \ln(5.13) = 1.635$, $\sigma_{f_M}^2 = 0.0862$.
+
+\subsection*{Initial velocity $v_0$}
+M\&A's velocity plots show horses leaving the gate at low velocity, reaching peak in 200–300 m. A representative early-race velocity is 5 m/s. CV 0.5: $\mu_{v_0} = \ln(5) = 1.609$, $\sigma_{v_0}^2 = 0.223$.
+
+\subsection*{Terminal reserve fraction $\varphi_T$}
+No published value exists for the reserve a horse carries past the wire. The strict time-minimizing optimum sets $\varphi_T \to 0$ (full depletion); real horses finish near-spent but with a positive fraction in hand. The LogisticBeta prior with Beta hyperparameters $(1.5, 12)$ has mean $\approx 0.11$ on the $(0, 1)$ scale, with mass concentrated below $0.3$: it favors strong depletion toward the theoretical optimum while letting the data lift the finishing reserve. The gate force is now derived from the boundary-value solve (Section~10), so the M\&A observation that the horse leaves the gate at the cap (Figs 4b, 6b, 9b) serves as a posterior check rather than a prior.
+
+\subsection*{Peak aerobic power $\sigma_{\max}$}
+M\&A Tables 1–3: $\sigma_M \in \{47.0, 54.6, 51.29\}$, mean 50.96. Empirical CV 0.075. Prior CV 0.3: $\mu_{\sigma_{\max}} = \ln(50.96) = 3.931$, $\sigma_{\sigma_{\max}}^2 = 0.0862$.
+
+\subsection*{Reserve latents $z_2, z_{12}, z_{01}$}
+M\&A Fig 10 shows the residual reserve at the $\dot V_{O_2}$ fall-off (sprint launch) at approximately one-third of $e^0$ for the longer races. With $m_0 \approx 3000$ J kg$^{-1}$, $m_2 \approx 1000$, hence $\mu_{z_2} = \ln(1000) = 6.908$. The first slope change in Fig 10 marks reaching $\dot V_{O_2,\max}$, where warm-up has fully activated; cross-horse average of $m_1$ is approximately $0.74 m_0 \approx 2220$, yielding gap $m_1/m_2 - 1 \approx 1.22$, hence $\mu_{z_{12}} = \ln(1.22) = 0.199$. With $m_1 \approx 2220$ and $m_0 \approx 3000$, gap $m_0/m_1 - 1 \approx 0.351$, hence $\mu_{z_{01}} = \ln(0.351) = -1.047$. All three carry CV 0.3: $\sigma^2 = 0.0862$.
+
+\subsection*{Knee steepnesses $\beta_1, \beta_2$}
+M\&A use a piecewise-linear $\sigma$ profile with sharp corners. A smooth logistic with $\beta = 10$ traverses each transition over roughly $0.4 m_0$, matching the visual sharpness of their Figs 4a, 6a, 9a. CV 0.5: $\mu_{\beta_1} = \mu_{\beta_2} = \ln(10) = 2.303$, $\sigma^2 = 0.223$.
+
+\subsection*{Slew rates $a, b$}
+M\&A Tables 1–3 (in spatial units, since their $u(s)$ is per unit distance): $\lvert u_-\rvert \in \{1.693, 3.69, 1.928\} \times 10^{-3}$, mean $a = 2.44 \times 10^{-3}$; $u_+ \in \{1.504, 3.94, 0.992\} \times 10^{-3}$, mean $b = 2.15 \times 10^{-3}$. CV 0.3: $\mu_a = \ln(0.00244) = -6.016$, $\mu_b = \ln(0.00215) = -6.142$, $\sigma^2 = 0.0862$ each.
+
+\subsection*{Residual force-cap fraction $\phi_{f,\min}$}
+M\&A force plots show terminal $f$ at roughly $0.78\, f_M$ across the three races (Fig 4b: 4.04/5.15; Fig 6b: 4.00/4.74; Fig 9b: 4.15/5.50). Terminal $f$ may not have hit the modulated cap, so the cap residual sits somewhat below this. Beta$(7, 3)$ has mean 0.70 with mass between 0.5 and 0.9.
+
+\subsection*{Half-activation reserve, force cap $m_f^*$}
+The cap modulator should engage when fatigue takes hold. Empirically this is near where $\dot V_{O_2}$ falls off, at approximately $0.33 m_0$. Beta$(3, 7)$ has mean 0.30 with mass between 0.1 and 0.5.
+
+\subsection*{Force-cap fatigue steepness $\kappa_f$}
+No published value. Same scale as the $\beta$'s, $\kappa_f \approx 10$. CV 0.5: $\mu_{\kappa_f} = 2.303$, $\sigma^2 = 0.223$.
+
+\subsection*{Residual upper-slew fraction $\phi_{b,\min}$}
+No direct empirical anchor. Beta$(5, 5)$ is uninformative on $(0, 1)$ with mean 0.5, letting the data choose.
+
+\subsection*{Half-activation reserve, upper slew $m_b^*$}
+By analogy with $m_f^*$, set near $0.33 m_0$. Beta$(3, 7)$.
+
+\subsection*{Upper-slew fatigue steepness $\kappa_b$}
+Same as $\kappa_f$: $\mu_{\kappa_b} = 2.303$, $\sigma^2 = 0.223$.
+
+\subsection*{Sector-time dispersion $\eta$}
+M\&A's tracking system has 25 cm position accuracy and roughly 0.02 s on 76–131 s races, giving instrument-level sector-time CV near $10^{-3}$. Biological variability dominates instrument noise; CV 0.05 is a defensible upper bound on per-sector noise. The Gamma$(1/\eta, 1/(\eta \hat{\delta t}))$ parameterization gives $\sqrt\eta$ as the sector-time CV, so $\eta = 0.0025$ matches CV 0.05. We round to $\eta = 0.01$ for safety: $\mu_\eta = \ln(0.01) = -4.605$, $\sigma_\eta^2 = 0.223$.
+
+\subsection*{Summary table}
+The full set of parameters, transformations, priors, and rationale is summarized below. For LogisticBeta entries, the center column gives the prior mean on the natural scale and the spread is implicit in the Beta parameters. For normal entries, center is $\mu$ and spread is $\sigma^2$ on the transformed scale.
+
+\begin{small}
+\begin{longtable}{@{}p{1.7cm}p{3.4cm}p{0.9cm}p{1.4cm}p{1.6cm}p{2.1cm}p{1.0cm}p{0.9cm}@{}}
+\toprule
+Symbol & Meaning & Dim. & Support & Transform & Prior & Center & Spread \\
+\midrule
+\endfirsthead
+\toprule
+Symbol & Meaning & Dim. & Support & Transform & Prior & Center & Spread \\
+\midrule
+\endhead
+$d$ & Discount horizon & m & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 7.550 & 0.223 \\
+$\varepsilon$ & Endpoint regularizer & m & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 3.912 & 0.223 \\
+$\alpha$ & Discount exponent & --- & $[0, \infty)$ & $\ln$ & $\mathcal{N}$ & 0 & 0.223 \\
+$\tau$ & Friction timescale & s & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.324 & 0.0862 \\
+$f_M$ & Max force per mass & m s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.635 & 0.0862 \\
+$v_0$ & Initial velocity & m s$^{-1}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.609 & 0.223 \\
+$\sigma_{\max}$ & Peak aerobic power & m$^2$s$^{-3}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 3.931 & 0.0862 \\
+$z_2$ & $m_2 = e^{z_2}$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 6.908 & 0.0862 \\
+$z_{12}$ & $m_1 = m_2(1+e^{z_{12}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 0.199 & 0.0862 \\
+$z_{01}$ & $m_0 = m_1(1+e^{z_{01}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & $-1.047$ & 0.0862 \\
+$\beta_1$ & Warm-up steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$\beta_2$ & Fall-off steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$a$ & Max downward slew & m$^{-1}$s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-6.016$ & 0.0862 \\
+$b$ & Max upward slew & m$^{-1}$s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-6.142$ & 0.0862 \\
+$\varphi_T$ & Terminal reserve frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(1.5, 12)$ & 0.11 & --- \\
+$\phi_{f,\min}$ & Residual cap frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(7, 3)$ & 0.70 & --- \\
+$m_f^*$ & Cap half-activation & m$^2$s$^{-2}$ & $(0, m_0)$ & $\ln\!\frac{m_0 x}{m_0 - x}$ & LB$(3, 7)$ & 0.30 & --- \\
+$\kappa_f$ & Cap fatigue steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$\phi_{b,\min}$ & Residual slew frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(5, 5)$ & 0.50 & --- \\
+$m_b^*$ & Slew half-activation & m$^2$s$^{-2}$ & $(0, m_0)$ & $\ln\!\frac{m_0 x}{m_0 - x}$ & LB$(3, 7)$ & 0.30 & --- \\
+$\kappa_b$ & Slew fatigue steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$\eta$ & Gamma dispersion & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-4.605$ & 0.223 \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\section{The Posterior-Predictive Race Time}
+
+Inference (Section~11) returns a posterior $\pi(\theta \mid \text{data})$ for each horse. Prediction asks the reverse question: given that posterior, what distribution does the horse's finishing time follow? The race time is the sum of the sector times,
+\begin{equation}
+T = \sum_{j=1}^{J} \delta t_j,
+\end{equation}
+and it inherits randomness from two independent sources. The posterior spreads $\theta$. The likelihood, even at a fixed $\theta$, spreads each $\delta t_j$ about its predicted mean $\hat{\delta t}_j(\theta)$. The forward integrator supplies only the means; the Gamma likelihood supplies the scatter. Both belong in the predictive, as the law of total variance makes plain:
+\begin{equation}
+\operatorname{Var}(T \mid \text{data}) = \underbrace{\mathbb{E}_\theta\!\Big[\eta \textstyle\sum_j \hat{\delta t}_j(\theta)^2\Big]}_{\text{within-race}} + \underbrace{\operatorname{Var}_\theta\!\Big(\textstyle\sum_j \hat{\delta t}_j(\theta)\Big)}_{\text{parameter}}.
+\end{equation}
+Dropping the within-race term answers which horse is faster on average; keeping it answers which horse wins on the day. We retain both.
+
+A Monte-Carlo procedure samples the predictive directly. For each draw $s = 1, \dots, S$:
+\begin{enumerate}
+\item Draw a parameter vector $\theta^{(s)} \sim \pi(\theta \mid \text{data})$, including the dispersion $\eta^{(s)}$.
+\item Solve the Section~10 boundary-value problem at $\theta^{(s)}$ (terminal reserve $\varphi_T^{(s)}$) to obtain the predicted sector means $\hat{\delta t}_j(\theta^{(s)})$, $j = 1, \dots, J$.
+\item Draw each sector time independently, $\delta t_j^{(s)} \sim \text{Gamma}\!\left(\dfrac{1}{\eta^{(s)}},\, \dfrac{1}{\eta^{(s)}\, \hat{\delta t}_j(\theta^{(s)})}\right)$.
+\item Sum to the race time, $T^{(s)} = \sum_{j=1}^{J} \delta t_j^{(s)}$.
+\end{enumerate}
+The sample $\{T^{(s)}\}_{s=1}^{S}$ is the posterior-predictive race-time distribution; its empirical mean, quantiles, and tail probabilities estimate the corresponding predictive quantities, exactly in the limit $S \to \infty$.
+
+Two points of order matter. The integration precedes the sector draws: the means $\hat{\delta t}_j(\theta^{(s)})$ parameterize the Gamma scatter, so they must exist before that scatter is sampled. And the race time is the \emph{sum} of the sampled sector times, not a further integration --- the forward system is solved once per parameter draw, never once per sector.
+
+\paragraph{Variance reduction.} Steps 3--4 sample the within-race scatter. Conditional on $\theta^{(s)}$, the sum $T \mid \theta^{(s)}$ is a convolution of independent Gammas with common shape $1/\eta^{(s)}$ and sector-specific scales $\eta^{(s)}\, \hat{\delta t}_j(\theta^{(s)})$. Replacing the draw with this conditional density --- evaluated by a saddlepoint inversion of its cumulant generating function, or moment-matched to a single Gamma with effective sector count $\bigl(\sum_j \hat{\delta t}_j\bigr)^2 / \sum_j \hat{\delta t}_j^2$ --- integrates the scatter out analytically and removes its Monte-Carlo noise. The predictive is then a mixture of these conditional densities over the parameter draws. The two routes target the identical distribution: the mixture is smoother at fixed $S$, the sampling form simpler and a useful check. Either way, comparing the predictive race times of a field --- the smallest $T$ wins --- yields the win-probability vector that the betting layer consumes; a shared race-day state, drawn once per simulated race and common to all horses, couples their times where track conditions do.
+
+\section{Numerical Solution and Computational Stack}\label{sec:numerics}
+
+\paragraph{Hermite--Simpson collocation for the boundary-value problem.} The forward system of Section~10 is a two-point boundary-value problem: $v(0) = v_0$ and $u(0) = 0$ at the gate, $u(d) = \ln \varphi_T$ at the wire, with the gate costate $\psi(0)$ left free. The Euler--Lagrange system is a Hamiltonian saddle, and the costate $\psi$ is anti-stable under forward integration --- a small error in a guessed $\psi(0)$ grows exponentially over $[0, d]$, and reversing the direction of integration only moves the blow-up onto the states $(v, u)$. So rather than shoot from one end, we discretize the whole trajectory and solve it at once. Lay down a mesh $0 = s_0 < s_1 < \cdots < s_N = d$ with steps $h_k = s_{k+1} - s_k$, and carry the nodal states $Y_k \approx y(s_k)$, $y = (v, u, \psi)$, as the unknowns. On each subinterval the cubic Hermite interpolant through the endpoint values and their slopes $F_k = F(s_k, Y_k)$ has midpoint $y_{\mathrm{mid}} = \tfrac{1}{2}(Y_k + Y_{k+1}) + \tfrac{h_k}{8}(F_k - F_{k+1})$; requiring the differential equation to hold at that midpoint is Simpson's rule, and the residual it leaves is the defect
+\begin{equation}\label{eq:defect}
+\Delta_k = (Y_{k+1} - Y_k) - \frac{h_k}{6}\bigl(F_k + 4\, F_{\mathrm{mid}} + F_{k+1}\bigr), \qquad F_{\mathrm{mid}} = F(s_{\mathrm{mid}}, y_{\mathrm{mid}}).
+\end{equation}
+Stacking the $N$ defects $\Delta_k = 0$ with the three boundary conditions gives a square nonlinear residual $R(Y; \theta) = 0$. Nothing pins $\psi(0)$: the solve \emph{determines} it, selecting the trajectory that lands on $u(d) = \ln \varphi_T$, and the gate force $f_0 = f_M \phi_f(m_0)\sigmoid(\psi(0))$ falls out as a derived quantity. Sector means are read off the augmented time coordinate at the edges (Section~13). The scheme is fourth-order, $O(h^4)$, and the optimality identity (14) holds along the solution to mesh tolerance --- a check on the discretization. A solve that fails to converge returns non-finite means, the Gamma density goes to $-\infty$, and the sampler rejects the draw.
+
+The slew saturation of Section~8 is a genuine $C^\infty$ hyperbolic tangent of $\psi'_\star$, not a clamp, so the residual $R$ is smooth everywhere and its Jacobian never goes flat --- the gradient-based sampler sees no kinks. The floored blend costs nothing here either: it changes the right-hand side, not the smoothness of $R$.
+
+Because the converged $Y^\star(\theta)$ is defined implicitly by $R(Y^\star, \theta) = 0$, its sensitivity follows from the implicit function theorem in closed form,
+\begin{equation*}
+\frac{\partial Y^\star}{\partial \theta} = -\left(\frac{\partial R}{\partial Y}\right)^{-1}\frac{\partial R}{\partial \theta},
+\end{equation*}
+so gradients of the sector means with respect to $\theta$ flow without differentiating the Newton iterates. This is what lets the boundary-value solve sit \emph{inside} the probabilistic model.
+
+\paragraph{Computational stack.} The substrate is \textbf{JAX} (CPU, 64-bit): reverse-mode automatic differentiation and XLA fuse the whole log-density and its gradient into a single compiled program, and 64-bit precision is needed for the Gamma tails and the time integrals. The collocation residual \eqref{eq:defect} is solved in two stages by \textbf{optimistix}: Levenberg--Marquardt (a damped Gauss--Newton least-squares) globalizes from the ramped initial guess into the basin of the root, then a Newton root-find polishes to a machine-precision root. The implicit differentiation of the converged solve supplies the derivative above and so makes $\theta \mapsto \hat{\delta t}$ differentiable; \textbf{lineax} handles the inner linear solves, with a QR factorization for the anti-stable costate conditioning that overwhelms an LU. Inference uses \textbf{NumPyro}'s NUTS, with the model a near-literal transcription of the math --- one sampling statement per parameter, one boundary-value solve for the sector means, one Gamma likelihood --- the solve embedded as an ordinary JAX call so gradients flow by automatic and implicit differentiation together. \textbf{ArviZ} computes the $\hat R$, effective-sample-size, and divergence diagnostics on the unconstrained sites. Forward sanity checks and trajectory diagnostics reuse the same collocation solve on a dense mesh, so there is one boundary-value solver, not a separate integrator. The posterior-predictive of Section~13 is a nested \texttt{vmap} over parameter draws and sector-noise replicates: pure JAX and independent of the sampler.
+
+\section{Discussion}
+
+The two reparameterizations accomplish complementary tasks. The log transform of the reserve eliminates the state-constraint boundary singularity at $m = 0$: the constraint becomes asymptotic in $u$ rather than active at finite $s$, putting the state on the natural multiplicative scale for an exponentially decaying physical quantity. The logit transform of the force eliminates the bang-bang structure of the constrained optimal control: the constraint becomes asymptotic in $\psi$ at both ends, putting the force on the natural log-odds scale and producing a smooth law of motion in place of a switching one.
+
+Together, the two reparameterizations replace a constrained optimal control problem with three boundary singularities --- $m \geq 0$, $f \geq 0$, $f \leq f_M$ --- by an unconstrained ordinary differential equation system in $(v, u, \psi)$ on $\mathbb{R}^3$. The force floor sharpens the middle constraint: rather than merely $f \geq 0$, the blend holds $f \geq \sigma/v$, the aerobic-supply-equivalent force, which is exactly what drains the reserve monotonically. The original physical states $(v, m, f)$ are recovered as derived quantities respecting all original constraints by construction.
+
+Two of these moves trade strict optimality for numerical robustness, and we state the trade plainly. The force floor breaks the first Euler--Lagrange equation wherever it binds, so the trajectory is the EL-shaped effort projected onto the monotone-feasible region, not the strict time optimum; and the smooth slew saturation abandons optimality at the band boundary by construction. In exchange we get a force positive above the floor, a reserve that depletes monotonically, and a boundary-value problem whose residual is smooth and well-conditioned --- the properties that let the solve sit inside the sampler. The undiscounted, unfatigued, floor-free limit recovers the strict variational optimum; the working model is a deliberate, bounded departure from it.
+
+The optimality identity (14), which appears only after equating two derivations of $f'$, is the algebraic content of optimality stripped of dynamical specifics. Read pointwise, it equates the marginal aerobic sensitivity to a kinematic combination: the acceleration plus the negative ratio of aerobic supply to specific kinetic energy. The horse runs its optimum when these are in balance.
+
+The variational core developed here carries its own inference machinery: the Bayesian model of Section~11, the posterior-predictive of Section~13, and the collocation solve and stack of Section~\ref{sec:numerics}. What remains for companion work is the betting layer that consumes the win-probability vector and the calibration of the model against a body of real charts.
+
+\appendix
+\section{Derivations}
+
+The Lagrangian (11) and its log form
+\begin{equation}
+\ln L = \ln v + \ln(v' + 1/\tau) - \ln(\sigma(m) - m\, v\, u')
+\end{equation}
+underlie all derivations below. Using $m(u) = m_0 e^u$ so that $m'(u) = m$, and $L'/L \equiv (d/ds) \ln L = \rho(s) - v'/v$ on-shell (with $\rho(s) = W'(s)/W(s) = \alpha/(d-s+\varepsilon)$), the partial derivatives of $\ln L$ are
+\begin{align*}
+\frac{\partial \ln L}{\partial v} &= \frac{1}{v} + \frac{m\, u'}{\sigma - m\, v\, u'}, &
+\frac{\partial \ln L}{\partial v'} &= \frac{1}{v' + 1/\tau}, \\
+\frac{\partial \ln L}{\partial u} &= -\frac{m\bigl(\sigma'(m) - v\, u'\bigr)}{\sigma - m\, v\, u'}, &
+\frac{\partial \ln L}{\partial u'} &= \frac{m\, v}{\sigma - m\, v\, u'}.
+\end{align*}
+The discount factor $W(s)$ is independent of $v, v', u, u'$, so it drops out of all four logarithmic partials; it enters only through $L'/L$ and through the on-shell value $L = W(s)/v$. Each EL equation $\partial L/\partial q = (d/ds)\, \partial L/\partial q'$ for $q \in \{v, u\}$ is divided by $L$ on both sides and read as a relation among logarithmic derivatives.
+
+\subsection{The first EL equation}\label{app:el1}
+
+The variation in $v$, divided by $L$, gives
+\[
+\frac{1}{v} + \frac{m\, u'}{\sigma - m\, v\, u'} = \frac{1}{v' + 1/\tau}\left(\frac{L'}{L} - \frac{d}{ds}\ln(v' + 1/\tau)\right).
+\]
+The left-hand side combines over the common denominator $v(\sigma - mvu')$ to $\sigma/[v(\sigma - mvu')]$. Recognizing the right-hand side as the logarithmic derivative of $L/(v' + 1/\tau)$,
+\[
+\frac{\sigma(m)}{v(\sigma - mvu')} = \frac{1}{v' + 1/\tau} \cdot \frac{d}{ds}\ln\left(\frac{L}{v' + 1/\tau}\right).
+\]
+Multiplying through by $v' + 1/\tau$ and applying the on-shell identity $\sigma - mvu' = v^2(v' + 1/\tau)$ to the denominator on the left,
+\[
+\frac{\sigma(m)}{v^3} = \frac{d}{ds}\ln\left(\frac{L}{v' + 1/\tau}\right).
+\]
+On-shell, $L = W(s)/v$, so $L/(v' + 1/\tau) = W/[v(v' + 1/\tau)] = W/f$ by the $v$-dynamics expression $f = v(v' + 1/\tau)$. Therefore
+\[
+\frac{d}{ds}\ln\left(\frac{W}{f}\right) = \frac{W'}{W} - \frac{f'}{f} = \rho(s) - \frac{f'}{f}.
+\]
+Equating with $\sigma(m)/v^3$ and solving for $f'/f$ yields (12).
+
+\subsection{The second EL equation}\label{app:el2}
+
+The partial derivatives of $\ln L$ in $u$ and $u'$ are independent of $W(s)$ since $W$ has no $u$ or $u'$ dependence. The EL equation $\partial L/\partial u = (d/ds)\, \partial L/\partial u'$, written in terms of $L$ times the logarithmic partials, is
+\[
+-L \cdot \frac{m(\sigma'(m) - vu')}{\sigma - mvu'} = \frac{d}{ds}\left[L \cdot \frac{mv}{\sigma - mvu'}\right].
+\]
+Expanding the right-hand side by logarithmic differentiation,
+\[
+\frac{d}{ds}\left[\frac{Lmv}{\sigma - mvu'}\right] = \frac{Lmv}{\sigma - mvu'}\cdot\frac{d}{ds}\ln\!\left(\frac{Lmv}{\sigma - mvu'}\right),
+\]
+and dividing the EL equation by $L \cdot m/(\sigma - mvu')$ gives
+\[
+-(\sigma'(m) - vu') = v \cdot \frac{d}{ds}\ln\!\left(\frac{Lmv}{\sigma - mvu'}\right).
+\]
+On-shell, $L = W/v$, so $Lmv/(\sigma - mvu') = Wm/(\sigma - mvu')$. Applying the on-shell identity $\sigma - mvu' = v^2(v' + 1/\tau) = vf$ to the denominator,
+\[
+\frac{Lmv}{\sigma - mvu'} = \frac{Wm}{vf}.
+\]
+Therefore
+\[
+\frac{d}{ds}\ln\!\left(\frac{Wm}{vf}\right) = \frac{W'}{W} + \frac{m'}{m} - \frac{v'}{v} - \frac{f'}{f} = \rho(s) + u' - \frac{v'}{v} - \frac{f'}{f},
+\]
+using $m'/m = u'$. Substituting back,
+\[
+-(\sigma'(m) - vu') = v\left[\rho(s) + u' - \frac{v'}{v} - \frac{f'}{f}\right],
+\]
+the $vu'$ terms cancel, and solving for $f'/f$ yields the EL2 expression for the law of motion of the propulsive force:
+\begin{equation}
+\frac{f'(s)}{f(s)} = \rho(s) - \frac{v'(s)}{v(s)} + \frac{\sigma'(m(s))}{v(s)}.
+\end{equation}
+Equating this with EL1 (12) gives
+\[
+\rho(s) - \frac{\sigma(m)}{v^3} = \rho(s) - \frac{v'}{v} + \frac{\sigma'(m)}{v},
+\]
+in which $\rho(s)$ cancels, leaving the optimality identity (14) unchanged by the discount.
+
+\subsection{The optimality identity}\label{app:identity}
+
+Equating the EL1 (12) and EL2 (13) expressions for $f'/f$,
+\[
+\rho(s) - \frac{\sigma(m)}{v^3} = \rho(s) - \frac{v'}{v} + \frac{\sigma'(m)}{v},
+\]
+the discount $\rho(s)$ cancels. Multiplying through by $v$ and rearranging yields the optimality identity (11). The identity is therefore independent of the discount: $\rho(s)$ enters both EL equations identically through $L'/L$ and drops out of their joint content.
+
+\subsection{The logit reparameterization and slew bound}\label{app:logit}
+
+The costate rate (17) comes from the logit map $f = f_M \phi_f(m)\,\sigmoid(\psi)$, the change of variables that renders the force reparameterization exact. Differentiating along the trajectory, with $\sigmoid'(\psi) = \sigmoid(\psi)(1 - \sigmoid(\psi))$,
+\[
+\frac{f'}{f} = \bigl(1 - \sigmoid(\psi)\bigr)\, \psi' = \left(1 - \frac{f}{f_M \phi_f(m)}\right)\psi'.
+\]
+Setting this equal to the EL2 expression for $f'/f$ from (13) and solving for $\psi'$ yields (17). The floored blend (16) keeps this $\psi'_\star$ as the EL-\emph{shaped} target rate --- the costate retains its EL2 shape and headroom factor --- which the saturation \eqref{eq:slew-squash} then bounds.
+
+The saturation \eqref{eq:slew-squash} is the affine shift of $\tanh$ with image $(-A, B)$: as $\psi'_\star \to -\infty$ its value tends to $(B-A)/2 - (A+B)/2 = -A$, and as $\psi'_\star \to +\infty$ to $(B-A)/2 + (A+B)/2 = B$, while at the interior point $\psi'_\star = (B-A)/2$ it has unit slope, so $\psi' \approx \psi'_\star$ there. Because $\tanh$ is $C^\infty$ and strictly increasing, the map is smooth and monotone in $\psi'_\star$ throughout --- no clamp, no inversion, no flat gradient. Bounding $\psi'$ to $(-A, B)$ bounds the controlled force slew $\kappa\,\psi'$ to $(-a, b\,\phi_b(m))$ through the coupling \eqref{eq:slew-coupling}.
+
+\end{document}

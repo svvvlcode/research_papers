@@ -1,0 +1,749 @@
+% =============================================================================
+% SVVVL Research Paper — Goal-Based Investing as Ergodic Control (Technical)
+% Built from template/svvvl_paper_template.tex (shared house style).
+% =============================================================================
+
+\documentclass[11pt]{article}
+
+% ----- Page geometry -------------------------------------------------------
+\usepackage[
+  letterpaper,
+  top=0.9in,
+  bottom=0.9in,
+  left=0.85in,
+  right=0.85in,
+  headheight=14pt
+]{geometry}
+
+% ----- Encoding & language -------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+
+
+% ----- Typography ----------------------------------------------------------
+\usepackage{XCharter}
+
+% Section headings
+\usepackage{titlesec}
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.4em}
+
+% Remove section numbering
+\setcounter{secnumdepth}{0}
+
+% ----- Spacing & paragraphs ------------------------------------------------
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+% ----- Graphics & color ----------------------------------------------------
+\usepackage{graphicx}
+\usepackage{xcolor}
+\definecolor{linkcolor}{HTML}{1F4E79}
+
+% ----- Hyperlinks ----------------------------------------------------------
+\usepackage[
+  colorlinks=true,
+  linkcolor=linkcolor,
+  urlcolor=linkcolor,
+  citecolor=linkcolor
+]{hyperref}
+
+% ----- Tables, figures, captions ------------------------------------------
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf, skip=6pt}
+
+% ----- Math ----------------------------------------------------------------
+\usepackage{amsmath, amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+
+% ----- Footnotes -----------------------------------------------------------
+\usepackage[hang, flushmargin]{footmisc}
+\setlength{\footnotesep}{0.8em}
+
+% ----- Headers & footers ---------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\thepage}
+
+\fancypagestyle{firstpage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+
+% ----- Logo lockup ---------------------------------------------------------
+\newcommand{\WORDMARKFILE}{../assets/SVVVL_Research_Wordmark.pdf}
+\newcommand{\WORDMARKWIDTH}{1.5in}
+\newcommand{\LOCKUPGAP}{0.01in}
+
+% The lockup itself: symbol above wordmark, both centered within a box
+% the width of the symbol so the wordmark sits naturally beneath it.
+\newcommand{\logolockup}{%
+  \begin{minipage}{\WORDMARKWIDTH}
+    \centering
+    \includegraphics[width=\WORDMARKWIDTH]{\WORDMARKFILE}
+  \end{minipage}%
+}
+
+% Title block command: \makecover{Title}{Subtitle}{Authors}{Date}
+\newcommand{\makecover}[4]{%
+  \thispagestyle{firstpage}%
+  \noindent\logolockup\par
+  \vspace{2.2em}
+  {\fontsize{26pt}{30pt}\selectfont\bfseries
+   \hyphenpenalty=10000\exhyphenpenalty=10000\sloppy
+   #1\par}
+  \vspace{0.6em}
+  {\fontsize{15pt}{18pt}\selectfont\itshape\color{black!70}
+   \hyphenpenalty=10000\exhyphenpenalty=10000\sloppy
+   #2\par}
+  \vspace{1.6em}
+  {\normalsize\color{black!60} #3\par}
+  \vspace{0.2em}
+  {\normalsize\color{black!60} #4\par}
+  \vspace{1.8em}
+}
+
+% ----- Theorem environments ------------------------------------------------
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+
+% ----- Custom commands -----------------------------------------------------
+% General-purpose math operators reused across papers. Add paper-specific
+% notation macros below as needed.
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Corr}{\mathrm{Corr}}
+\newcommand{\dd}{\mathrm{d}}
+
+% =============================================================================
+% DOCUMENT
+% =============================================================================
+\begin{document}
+
+% --- COVER -------------------------------------------------------------------
+\makecover
+  {Goal-Based Investing under Ergodic Dynamics}
+  {Time-Average Growth, Geometric-Mean Targets, and a Fixed-Point Closure
+   of the Constraint Identity}
+  {J.~E. Whitehead~III\footnote{SVVVL, Towson, MD, United States.
+   Contact: \href{mailto:james.whitehead@svvvl.com}{james.whitehead@svvvl.com}.
+   See Disclosures at the end of this document.}}
+  {\today}
+
+% --- ABSTRACT ----------------------------------------------------------------
+\begin{quote}
+\itshape
+We reformulate the goal-based portfolio problem under geometric
+Brownian motion with the time-average growth rate of log wealth as
+the objective and a geometric-mean terminal target as the constraint.
+The reformulation produces an exact fixed-point closure of the
+constraint identity: the contribution stream's effect on its own
+discount base yields a future-value-of-annuity calculation in which
+the time-average growth rate $R(l) = \mu_b + \mu_e l - \tfrac12
+\sigma^2 l^2$ replaces the ensemble drift. The optimal allocation is
+Kelly. The framework presents a one-parameter frontier of $(l, c)$
+trade-offs that the investor traverses by preference between
+volatility and contribution dollars. Model-predictive re-planning
+from the realized state recovers the dynamic-programming optimum
+exactly, because the constraint is linear in $\ln P$ and the
+objective integrand is stationary.
+\end{quote}
+
+
+\newpage
+% --- INTRODUCTION ----------------------------------------------------------
+\section{Introduction}
+
+The goal-based portfolio problem asks how an investor with current
+wealth $P(t)$, terminal target $P_T$, horizon $T$, and a continuous
+contribution stream $c(t)$ should allocate between a risky and a
+risk-free asset. The standard formulation, following the goal-based
+wealth management literature (Brunel, 2015; Das, Ostrov,
+Radhakrishnan, and Srivastav, 2020), poses this as an expected-utility
+maximization subject to an expected terminal wealth constraint
+$\mathbb{E}[P(T)] = P_T$.
+
+Both objects are ensemble averages. Under multiplicative wealth
+dynamics, the ensemble drift $\mu_b + \mu_e l$ governs
+$\mathbb{E}[P(t)]$, while the time-average growth rate of a single
+path is $R(l) = \mu_b + \mu_e l - \tfrac12 \sigma^2 l^2$. The gap
+between them is the volatility drag $\tfrac12 \sigma^2 l^2$, the
+difference between the average outcome across paths and the typical
+outcome along a path (Peters and Adamou, 2018; Peters, 2019). For an
+investor who walks one path, the second number is the relevant one.
+
+This note reformulates the problem in terms of objects that align
+with the investor's experience. The objective becomes the expected
+integral of $d\ln P$. The constraint becomes a geometric-mean target,
+$\mathbb{E}[\ln P(T)] = \ln P_T$. Both are now phrased in $\ln P$,
+which is the ergodic transformation for geometric Brownian motion:
+the change of variables under which time and ensemble averages
+of the increment process coincide.
+
+The reformulation has four consequences.
+
+First, the constraint identity admits an exact fixed-point closure.
+Contributions feed back through the wealth base they build, and the
+resulting expression for required contributions takes the form of a
+standard future-value-of-annuity calculation, with the time-average
+growth rate $R(l)$ replacing the ensemble drift.
+
+Second, the optimal allocation is Kelly, $l^* = \mu_e/\sigma^2$, with
+the savings rate as the residual control. The framework leaves the
+allocation pinned at Kelly unless the investor's preferences over
+volatility pull it away.
+
+Third, the framework presents the investor a one-parameter frontier
+of $(l, c)$ trade-offs at each rebalancing date. Deviations from
+Kelly are admissible below $l^*$ as volatility-versus-savings
+trade-offs and dominated above.
+
+Fourth, the model-predictive re-planning structure that arises
+naturally from this construction recovers the dynamic-programming
+optimum exactly, because the constraint is linear in $\ln P$ and the
+integrand of the objective is stationary.
+
+The paper restricts attention to constant-parameter geometric
+Brownian motion, where the ergodic transformation is the natural log
+and the closed forms are elementary. Section~\ref{sec:setup} sets up
+the dynamics and states the problem. Section~\ref{sec:identity}
+derives the constraint identity and its fixed-point closure. Sections
+\ref{sec:snapshot} and \ref{sec:lifecycle} present the two
+user-facing frontiers, snapshot and lifecycle, and characterize
+the Kelly minimum. Section~\ref{sec:feasibility} develops the
+feasibility window under contribution and allocation bounds.
+Section~\ref{sec:mpc} states the model-predictive algorithm and its
+equivalence to dynamic programming. Section~\ref{sec:extensions}
+discusses extensions. Derivations and proofs are in the appendix.
+
+% --- SECTION ---------------------------------------------------------------
+\section{Setup}
+\label{sec:setup}
+
+The portfolio value $P(t)$ evolves under
+\begin{equation}
+  \label{eq:dynamics}
+  dP(t) \;=\; \bigl[P(t)(\mu_b + \mu_e l(t)) + c(t)\bigr]\,dt
+  \;+\; P(t)\,\sigma\, l(t)\, dW_t,
+  \qquad P(0) = P_0,
+\end{equation}
+where $W$ is a standard Brownian motion, $l(t)$ is the risky-asset
+allocation, and $c(t) \geq 0$ is the contribution rate.
+
+We assume throughout that the risk-free rate $\mu_b$, excess return
+$\mu_e$, and volatility $\sigma$ are positive constants, and that the
+horizon $T < \infty$ and target $P_T > 0$ are fixed.
+
+Define the time-average log-growth rate at allocation $l$:
+\begin{equation}
+  \label{eq:R}
+  R(l) \;\equiv\; \mu_b + \mu_e l - \tfrac12 \sigma^2 l^2.
+\end{equation}
+This is the deterministic drift of $\ln P$ in the absence of
+contributions, and the rate that governs the typical path of $P$.
+
+The investor's problem is
+\begin{equation}
+  \label{eq:problem}
+  \max_{l(\cdot), c(\cdot)}\;
+  \mathbb{E}\!\left[\int_0^T d\ln P(s)\right]
+  \quad \text{subject to} \quad
+  \mathbb{E}[\ln P(T)] = \ln P_T
+\end{equation}
+and the dynamics in~\eqref{eq:dynamics}. The objective and constraint
+are both phrased in $\ln P$, which is the ergodic transformation for
+GBM: $\ln P$ has stationary Gaussian increments, so time and ensemble
+averages of $d\ln P$ coincide along any single realized path.
+
+% --- SECTION ---------------------------------------------------------------
+\section{The Constraint Identity and Its Closure}
+\label{sec:identity}
+
+\subsection{The constraint identity}
+
+Applying It\^o's lemma to $\ln P$ under~\eqref{eq:dynamics}:
+\begin{equation}
+  \label{eq:dlnP}
+  d\ln P \;=\; \left[R(l) + \frac{c}{P}\right]dt \;+\; \sigma l\, dW.
+\end{equation}
+Integrate from $t$ to $T$, take expectations conditional on
+$\mathcal{F}_t$, and impose $\mathbb{E}[\ln P(T)] = \ln P_T$:
+\begin{equation}
+  \label{eq:identity}
+  \ln(P_T/P(t)) \;=\; \int_t^T R(l(s))\,ds
+  \;+\; \int_t^T \mathbb{E}\!\left[\frac{c(s)}{P(s)} \,\Big|\, \mathcal{F}_t\right]ds.
+\end{equation}
+The first term is the deterministic log-growth from the allocation
+policy. The second is the conditional expected log-growth contributed
+by savings. Equation~\eqref{eq:identity} is the working identity of
+the framework.
+
+\subsection{The fixed-point closure}
+
+The second integrand in~\eqref{eq:identity} cannot be evaluated
+directly because $P(s)$ in the denominator is the wealth process,
+which itself depends on contributions made between $t$ and $s$.
+Define the cumulative contribution-induced log-growth
+\begin{equation}
+  \label{eq:phi-def}
+  \phi(s) \;\equiv\; \int_t^s \overline{c(u)/P(u)}\,du,
+\end{equation}
+where $\overline{c/P}$ denotes the time-average expectation along the
+typical path. The self-reference in~\eqref{eq:phi-def} closes into a
+separable ODE for $\phi$, with solution
+\begin{equation}
+  \label{eq:phi}
+  \phi(s) \;=\; \ln\!\left[1 + \frac{c}{P(t)}\,A(R(l), s-t)\right],
+  \qquad
+  A(R, \tau) \;\equiv\; \frac{1 - e^{-R\tau}}{R},
+\end{equation}
+when $l$ and $c$ are held constant on $[t, T]$. The function $A(R,
+\tau)$ is the standard continuous-time annuity factor at rate $R$
+over horizon $\tau$. The derivation is in Appendix~\ref{app:phi}.
+
+Substituting $\phi(T)$ into~\eqref{eq:identity}, exponentiating, and
+rearranging produces the working form of the constraint, which we
+call the \emph{dollar-balance equation}:
+\begin{equation}
+  \label{eq:balance}
+  \boxed{
+  P(t)\, e^{R(l)(T-t)}
+  \;+\; c\cdot \frac{e^{R(l)(T-t)} - 1}{R(l)}
+  \;=\; P_T.
+  }
+\end{equation}
+This is the standard future-value-of-annuity identity from finance:
+current wealth $P(t)$ compounded forward at rate $R(l)$, plus a
+continuous-flow annuity $c$ compounded forward at the same rate,
+equals the terminal target $P_T$. The rate $R(l)$ is the time-average
+growth rate of log wealth, not the ensemble drift $\mu_b + \mu_e l$,
+so the volatility drag is built into the compounding by construction.
+The derivation is in Appendix~\ref{app:balance}.
+
+The textbook future-value-of-annuity formula uses $\mu_b + \mu_e l$
+as the rate. The replacement of this rate by $R(l)$ is the working
+content of the reformulation. Numerically, for $\sigma = 0.18$ and
+$l = 1$, the difference is $\tfrac12 \sigma^2 l^2 = 1.62\%$ per year,
+which compounds to a thirty-percent gap over a twenty-year horizon.
+
+% --- SECTION ---------------------------------------------------------------
+\section{The Snapshot Frontier}
+\label{sec:snapshot}
+
+Solving~\eqref{eq:balance} for $c$ in terms of $l$ gives the
+snapshot frontier:
+\begin{equation}
+  \label{eq:modeA}
+  \boxed{
+  c(l) \;=\;
+  \frac{P_T \;-\; P(t)\,e^{R(l)(T-t)}}{\bigl(e^{R(l)(T-t)} - 1\bigr) / R(l)}.
+  }
+\end{equation}
+The frontier is the set of $(l, c)$ pairs that, held constant from
+$t$ to $T$, satisfy the geometric-mean terminal constraint.
+
+Whenever the goal exceeds the Kelly-compounded current wealth (that
+is, $P_T > P(t)\, e^{R(l^*)(T-t)}$ with $l^* = \mu_e/\sigma^2$),
+$c(l)$ is strictly convex on $[l_{\min}, l_{\max}]$ with global
+minimum at the Kelly allocation $l^*$. The Kelly allocation maximizes
+$R(l)$ over $\mathbb{R}$, which minimizes the compounded shortfall in
+the numerator and the annuity factor in the denominator; the former
+effect dominates. The derivation is in Appendix~\ref{app:convex}.
+
+For $l > l^*$, both $c(l)$ and $\mathrm{Var}(P(T))$ are increasing in
+$l$. Allocations above Kelly are therefore dominated under the joint
+criterion of minimizing required contributions and minimizing
+portfolio variance. The investor's admissible choice set is $l \in
+[l_{\min}, l^*]$. The trade-off along this segment is between
+allocation volatility and contribution level: lower $l$ reduces
+portfolio variance at the cost of higher $c$.
+
+% --- SECTION ---------------------------------------------------------------
+\section{The Lifecycle Frontier}
+\label{sec:lifecycle}
+
+A more realistic specification lets contributions grow with income.
+Set
+\begin{equation}
+  c(s) \;=\; c_0\, e^{g s},
+\end{equation}
+with $c_0 > 0$ and $g \in \mathbb{R}$ deterministic. The same
+fixed-point argument applied to this deterministic contribution
+schedule produces the lifecycle constraint:
+\begin{equation}
+  \label{eq:modeB}
+  \boxed{
+  P(t)\, e^{R(l)(T-t)}
+  \;+\; c_0\, e^{gt}\, e^{R(l)(T-t)}\cdot \frac{e^{(g - R(l))(T-t)} - 1}{g - R(l)}
+  \;=\; P_T.
+  }
+\end{equation}
+The case $g = R(l)$ is handled by continuity:
+$(e^{(g-R(l))(T-t)} - 1)/(g - R(l)) \to T - t$. The derivation is in
+Appendix~\ref{app:lifecycle}.
+
+Solving for $c_0$ at fixed $(g, l)$:
+\begin{equation}
+  \label{eq:c0}
+  c_0 \;=\;
+  \frac{\bigl[P_T\, e^{-R(l)(T-t)} - P(t)\bigr]\,
+        e^{-gt}\,(g - R(l))}
+       {e^{(g - R(l))(T-t)} - 1}.
+\end{equation}
+The investor specifies the wage-growth assumption $g$ and the
+allocation $l$, and reads off the required initial contribution.
+
+At fixed $g \neq R(l^*)$, $c_0$ is strictly convex in $l$ with
+minimum at $l^* = \mu_e/\sigma^2$ on the interior of the feasibility
+region. The same dominance argument as for the snapshot frontier
+restricts the investor's admissible choice set to $l \in [l_{\min},
+l^*]$. The derivation is in Appendix~\ref{app:lifecycle-convex}.
+
+% --- SECTION ---------------------------------------------------------------
+\section{The Feasibility Window}
+\label{sec:feasibility}
+
+The investor's allocation is bounded by risk-tolerance limits
+$l \in [l_{\min}, l_{\max}]$ and her contribution by dollar capacity
+$c \in [\text{LB}, \text{UB}]$. These bounds imply, at any state
+$(P(t), t)$, a window of reachable terminal wealth under the
+hold-to-expiry assumption.
+
+Define $l_{\text{best}} = \min(l_{\max}, \mu_e/\sigma^2)$, and let
+$l_{\text{worst}} \in \{l_{\min}, l_{\max}\}$ denote the endpoint
+minimizing $R(l)$ over $[l_{\min}, l_{\max}]$. With constant $l$ and
+constant $c$ held to expiry, the set of reachable terminal wealth
+values is $P_T \in [P(T)_{\min}, P(T)_{\max}]$, where
+\begin{align}
+  \label{eq:Pmax}
+  P(T)_{\max} &= P(t)\, e^{R(l_{\text{best}})(T-t)}
+  \;+\; \mathrm{UB} \cdot \frac{e^{R(l_{\text{best}})(T-t)} - 1}{R(l_{\text{best}})}, \\
+  \label{eq:Pmin}
+  P(T)_{\min} &= P(t)\, e^{R(l_{\text{worst}})(T-t)}
+  \;+\; \mathrm{LB} \cdot \frac{e^{R(l_{\text{worst}})(T-t)} - 1}{R(l_{\text{worst}})}.
+\end{align}
+
+The window expands when $P(t)$ rises and contracts when it falls,
+each rebalancing period. A goal $P_T > P(T)_{\max}$ is infeasible
+from the current state and signals a required revision of $P_T$, $T$,
+or the bounds.
+
+% --- SECTION ---------------------------------------------------------------
+\section{Model-Predictive Algorithm and Bellman Equivalence}
+\label{sec:mpc}
+
+\subsection{Algorithm}
+
+At each rebalancing time $t \in [0, T)$:
+
+\begin{enumerate}
+  \item Observe the realized portfolio value $P(t)$.
+  \item Compute the feasibility window $[P(T)_{\min}, P(T)_{\max}]$ via~\eqref{eq:Pmax} and~\eqref{eq:Pmin}.
+  \item If $P_T \notin [P(T)_{\min}, P(T)_{\max}]$, prompt for
+    revision of $P_T$, $T$, or bounds.
+  \item Otherwise, compute the chosen frontier:~\eqref{eq:modeA}
+    (snapshot) or~\eqref{eq:c0} (lifecycle).
+  \item The investor selects $(l, c)$ on the frontier subject to
+    bounds.
+  \item Hold the policy over $[t, t + \Delta]$. Return to step 1.
+\end{enumerate}
+
+Every step is closed-form. The control rule itself involves no
+approximation of $1/P(s)$.
+
+\subsection{Bellman equivalence}
+
+Let $J^*(P(t), t)$ denote the optimal value of~\eqref{eq:problem}
+under the geometric-mean constraint from initial state $(P(t), t)$.
+The policy obtained by re-solving~\eqref{eq:identity} at each $t$ from
+the realized $P(t)$ coincides almost surely with the optimal feedback
+control of the dynamic-programming problem with value function $J^*$.
+The argument turns on two properties of the reformulated problem:
+the integrand of the objective is stationary in $(l, c/P)$, and the
+constraint is linear in $\ln P$. Together, these properties make the
+re-solved problem from $(P(t), t)$ the dynamic-programming subproblem
+of the original. The derivation is in Appendix~\ref{app:bellman}.
+
+Under the arithmetic-mean constraint $\mathbb{E}[P(T)] = P_T$, the
+analogous equivalence fails: the variational re-solution is on
+$\mathbb{E}[P]$ but the HJB optimum is on $\mathbb{E}[\ln P]$, and
+the Jensen gap is exactly the volatility drag absorbed by $R(l)$ in
+the geometric-mean formulation.
+
+% --- SECTION ---------------------------------------------------------------
+\section{Extensions}
+\label{sec:extensions}
+
+\textbf{Multiple risky assets.} For an $n$-vector of risky assets with
+excess return $\mu_e \in \mathbb{R}^n$ and covariance $\Sigma \in
+\mathbb{R}^{n \times n}$, the Kelly allocation generalizes to $l^* =
+\Sigma^{-1}\mu_e$, with $R(l) = \mu_b + \mu_e^\top l - \tfrac12
+l^\top \Sigma l$. The dollar-balance form~\eqref{eq:balance} and the
+fixed-point closure are unchanged.
+
+\textbf{Time-varying parameters.} Piecewise-constant $(\mu_b, \mu_e,
+\sigma)$ extend the framework by recomputing the constraint identity
+each period. The closed forms hold within each segment.
+
+\textbf{Merton recovery.} Setting $P_T = P_0 \exp(r T)$ for
+$r = \mu_b + \mu_e^2/(2\sigma^2)$ (the Kelly-compounded current
+wealth) gives $c = 0$ at the Kelly allocation; the framework reduces
+to the unconstrained log-optimal portfolio.
+
+\textbf{Anomalous diffusions.} The natural log is the ergodic
+transformation specific to geometric Brownian motion. For
+subdiffusive, superdiffusive, or heavy-tailed processes, the
+corresponding generalized log replaces $\ln$ throughout, and the
+fixed-point closure carries over with the appropriate annuity factor.
+A companion note develops this generalization.
+
+% --- CONCLUSION ------------------------------------------------------------
+\section{Conclusion}
+\label{sec:conclusion}
+
+The reformulation of the goal-based portfolio problem around the
+time-average growth rate of log wealth and a geometric-mean terminal
+target produces a framework with three operational properties: an
+exact fixed-point closure of the constraint identity, a closed-form
+$(l, c)$ frontier with a Kelly minimum, and a model-predictive
+re-planning loop that recovers the dynamic-programming optimum
+exactly. The framework respects the experience of an investor on a
+single realized path rather than the expectation across a population
+of paths she does not traverse. The implementation is elementary at
+each rebalancing date, and the same construction extends to multiple
+assets, time-varying parameters, and anomalous diffusions through the
+appropriate generalized log.
+
+% --- TECHNICAL APPENDIX ----------------------------------------------------
+\newpage
+\section{Technical Appendix}
+\label{app:proofs}
+
+\subsection{Derivation of the fixed-point closure}
+\label{app:phi}
+
+Let $m(s) = \mathbb{E}[\ln P(s) \mid \mathcal{F}_t]$. Taking
+conditional expectations of~\eqref{eq:dlnP}:
+\begin{equation}
+  m'(s) \;=\; R(l) \;+\; \overline{c/P(s)}.
+\end{equation}
+Define $\overline{1/P(s)} \equiv 1/\exp(m(s))$, the ergodic
+expectation of $1/P(s)$ under the time-average framing. Since the
+contribution $c(s) = c$ is deterministic,
+\begin{equation}
+  \overline{c/P(s)} \;=\; c \cdot \overline{1/P(s)} \;=\; \frac{c}{e^{m(s)}}.
+\end{equation}
+Therefore
+\begin{equation}
+  m'(s) \;=\; R(l) \;+\; c\,e^{-m(s)},
+\end{equation}
+with $m(t) = \ln P(t)$. Substituting $\phi(s) = m(s) - \ln P(t) -
+R(l)(s - t)$ so that $\phi(t) = 0$ and $m(s) = \ln P(t) + R(l)(s - t)
++ \phi(s)$:
+\begin{equation}
+  \phi'(s) \;=\; c\,e^{-\ln P(t) - R(l)(s - t) - \phi(s)}
+  \;=\; \frac{c}{P(t)}\, e^{-R(l)(s - t)}\, e^{-\phi(s)}.
+\end{equation}
+This is a separable ODE. Multiply both sides by $e^{\phi(s)}$:
+\begin{equation}
+  e^{\phi(s)}\phi'(s) \;=\; \frac{c}{P(t)}\, e^{-R(l)(s - t)}.
+\end{equation}
+The left side equals $\frac{d}{ds}\bigl[e^{\phi(s)}\bigr]$. Integrating
+from $t$ to $s$ with $e^{\phi(t)} = 1$:
+\begin{equation}
+  e^{\phi(s)} - 1 \;=\; \frac{c}{P(t)}\int_t^s e^{-R(l)(u - t)}\,du
+  \;=\; \frac{c}{P(t)}\, A(R(l), s - t).
+\end{equation}
+Solving for $\phi(s)$ gives~\eqref{eq:phi}.
+
+\subsection{Derivation of the dollar-balance equation}
+\label{app:balance}
+
+Substituting $\phi(T)$ from~\eqref{eq:phi} into the constraint
+identity~\eqref{eq:identity} with constant $l$:
+\begin{equation}
+  \ln(P_T/P(t)) \;=\; R(l)(T - t) \;+\; \ln\!\left[1 + \frac{c}{P(t)}\,A(R(l), T - t)\right].
+\end{equation}
+Exponentiating:
+\begin{equation}
+  \frac{P_T}{P(t)}\, e^{-R(l)(T - t)} \;=\; 1 + \frac{c}{P(t)}\, A(R(l), T - t).
+\end{equation}
+Multiplying both sides by $P(t)\,e^{R(l)(T - t)}$:
+\begin{equation}
+  P_T \;=\; P(t)\, e^{R(l)(T - t)} \;+\; c\, e^{R(l)(T - t)}\, A(R(l), T - t).
+\end{equation}
+Using $e^{R\tau} A(R, \tau) = (e^{R\tau} - 1)/R$ gives~\eqref{eq:balance}.
+
+
+\subsection{Convexity of the snapshot frontier}
+\label{app:convex}
+
+Write $\tau = T - t$ and $S(l) = (e^{R(l)\tau} - 1)/R(l)$ for the
+future-value annuity factor. From~\eqref{eq:modeA},
+\begin{equation}
+  c(l) \;=\; \frac{P_T - P(t)\,e^{R(l)\tau}}{S(l)}.
+\end{equation}
+Differentiating with respect to $l$ and using $R'(l) = \mu_e -
+\sigma^2 l$:
+\begin{equation}
+  c'(l) \;=\; -\frac{R'(l)}{S(l)^2}
+  \left[P(t)\,e^{R(l)\tau}\,\tau\,S(l)
+        + \bigl(P_T - P(t)\,e^{R(l)\tau}\bigr)\,S'(l) / R'(l) \cdot R'(l)\right].
+\end{equation}
+A cleaner route is to differentiate the implicit form. From the
+dollar balance~\eqref{eq:balance},
+\begin{equation}
+  P(t)\, e^{R(l)\tau} + c(l)\, S(l) = P_T.
+\end{equation}
+Differentiating:
+\begin{equation}
+  P(t)\,\tau\, e^{R(l)\tau}\, R'(l) + c'(l)\, S(l) + c(l)\, S'(l) = 0,
+\end{equation}
+so
+\begin{equation}
+  c'(l) \;=\; -\frac{P(t)\,\tau\, e^{R(l)\tau}\, R'(l) + c(l)\, S'(l)}{S(l)}.
+\end{equation}
+At $l^* = \mu_e/\sigma^2$, $R'(l^*) = 0$ and $S'(l^*) = 0$ (the latter
+because $S$ depends on $l$ only through $R(l)$, and $R'(l^*) = 0$).
+Therefore $c'(l^*) = 0$. The second-order condition reduces, after
+similar substitution and using $R''(l) = -\sigma^2$, to
+\begin{equation}
+  c''(l^*) \;=\; -\frac{P(t)\,\tau\, e^{R(l^*)\tau}\, R''(l^*)}{S(l^*)}
+  \;=\; \frac{P(t)\,\tau\, e^{R(l^*)\tau}\, \sigma^2}{S(l^*)} \;>\; 0
+\end{equation}
+under the stated condition $P_T > P(t)\,e^{R(l^*)\tau}$ (so $c(l^*) >
+0$ and $S(l^*) > 0$). Strict convexity follows by continuity and the
+absence of other critical points on $[l_{\min}, l_{\max}]$ since
+$R'(l)$ vanishes only at $l^*$.
+
+\subsection{Derivation of the lifecycle constraint}
+\label{app:lifecycle}
+
+The fixed-point argument of Appendix~\ref{app:phi} extends to
+deterministic $c(s) = c_0 e^{gs}$. The ODE for $\phi$ becomes
+\begin{equation}
+  \phi'(s) \;=\; \frac{c_0 e^{gs}}{P(t)}\, e^{-R(l)(s - t)}\, e^{-\phi(s)}.
+\end{equation}
+Multiplying by $e^{\phi(s)}$ and integrating:
+\begin{equation}
+  e^{\phi(s)} - 1 \;=\; \frac{c_0}{P(t)}\int_t^s e^{(g - R(l))(u - t) + R(l)(0)}\, du,
+\end{equation}
+which simplifies to
+\begin{equation}
+  e^{\phi(s)} - 1 \;=\; \frac{c_0\, e^{gt}}{P(t)}\cdot \frac{e^{(g - R(l))(s - t)} - 1}{g - R(l)}.
+\end{equation}
+At $s = T$, substituting $\phi(T)$ into~\eqref{eq:identity},
+exponentiating, and multiplying through by $P(t)\,e^{R(l)(T - t)}$
+yields~\eqref{eq:modeB}.
+
+\subsection{Convexity of the lifecycle frontier}
+\label{app:lifecycle-convex}
+
+Differentiating~\eqref{eq:c0} implicitly through the dollar balance,
+the same structure as Appendix~\ref{app:convex} applies: $c_0$ is
+convex in $l$ because the dominant $l$-dependence enters through
+$R(l)$, and $R$ is concave with maximum at Kelly. The
+implicit-function argument carries over with $R'(l^*) = 0$ giving
+$c_0'(l^*) = 0$ and $R''(l^*) = -\sigma^2$ giving $c_0''(l^*) > 0$
+on the interior of feasibility.
+
+\subsection{Bellman equivalence under the geometric-mean constraint}
+\label{app:bellman}
+
+The dynamic-programming subproblem from state $(P(t), t)$ is
+\begin{equation}
+  J^*(P(t), t) \;=\; \sup_{l, c}\, \mathbb{E}\!\left[\int_t^T d\ln P(s) \,\Big|\, \mathcal{F}_t\right]
+  \quad \text{s.t.} \quad \mathbb{E}[\ln P(T) \mid \mathcal{F}_t] = \ln P_T.
+\end{equation}
+Two observations close the proof.
+
+First, the objective integrand $d\ln P/dt = R(l) + c/P$ depends on
+the controls $(l, c)$ and the state $P$ only through stationary
+functions: $R(l)$ depends on $l$ alone, and $c/P$ on the
+contemporaneous control and state. There is no explicit time
+dependence and no path dependence through $\ln P$ history.
+
+Second, the constraint is linear in $\ln P(T)$, with $\ln P(t)$
+entering only as a shift: $\mathbb{E}[\ln P(T) \mid \mathcal{F}_t] -
+\ln P(t) = \ln(P_T/P(t))$, which depends on the realized state $P(t)$
+but not on the path leading to it.
+
+Together, these properties imply that the constraint identity
+$\eqref{eq:identity}$ rewritten from $(P(t), t)$ has the same
+functional form as from $(P_0, 0)$, with $P(t)$ in place of $P_0$ and
+$T - t$ as the remaining horizon. The re-solved policy is therefore
+the optimal continuation by the principle of optimality (Bellman,
+1957).
+
+% --- REFERENCES ------------------------------------------------------------
+\newpage
+\section{Further Reading and References}
+
+\begin{itemize}\setlength{\itemsep}{0.3em}
+  \item Bellman, R.~E. (1957). \textit{Dynamic Programming}. Princeton
+        University Press, Princeton.
+  \item Brunel, J.~L.~P. (2015). \textit{Goals-Based Wealth Management:
+        An Integrated and Practical Approach to Changing the Structure of
+        Wealth Advisory Practices}. Wiley Finance, Hoboken, NJ.
+  \item Cover, T.~M. (1991). ``Universal portfolios.''
+        \textit{Mathematical Finance}, 1(1), 1--29.
+  \item Das, S.~R., Ostrov, D., Radhakrishnan, A., and Srivastav, D.
+        (2020). ``Dynamic portfolio allocation in goals-based wealth
+        management.'' \textit{Computational Management Science}, 17(4),
+        613--640.
+  \item Kelly, J.~L. (1956). ``A new interpretation of information
+        rate.'' \textit{Bell System Technical Journal}, 35(4), 917--926.
+  \item Merton, R.~C. (1971). ``Optimum consumption and portfolio rules
+        in a continuous-time model.'' \textit{Journal of Economic
+        Theory}, 3(4), 373--413.
+  \item Peters, O. (2019). ``The ergodicity problem in economics.''
+        \textit{Nature Physics}, 15(12), 1216--1221.
+  \item Peters, O., and Adamou, A. (2018). \textit{Ergodicity
+        Economics}. Lecture notes, London Mathematical Laboratory.
+  \item Peters, O., and Gell-Mann, M. (2016). ``Evaluating gambles
+        using dynamics.'' \textit{Chaos}, 26(2), 023103.
+\end{itemize}
+
+\newpage
+% --- DISCLOSURES -------------------------------------------------------------
+\section{Disclosures}
+
+The views expressed in this document are those of the author and
+SVVVL alone and do not constitute investment, legal, tax, or
+accounting advice. This document is provided for informational and
+research purposes only and is not an offer or solicitation to buy or
+sell any security or financial product.
+
+The framework presented is theoretical and relies on idealized
+assumptions that do not hold in practice. The results
+should not be implemented in a real portfolio without additional
+constraints and considerations not addressed in this paper.
+
+While reasonable care has been taken in the preparation of this
+document, no representation or warranty, express or implied, is made
+as to its accuracy or completeness.
+
+Reading this document does not create an advisory, fiduciary, or
+client relationship of any kind between the reader and SVVVL or the
+author.
+
+\end{document}

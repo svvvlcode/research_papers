@@ -1,0 +1,249 @@
+% =============================================================================
+% SVVVL Research Paper — TEMPLATE
+% Copy this directory, rename the .tex, and replace the placeholder text.
+% All formatting below is shared house style; edit content, not the preamble.
+% =============================================================================
+
+\documentclass[11pt]{article}
+
+% ----- Page geometry -------------------------------------------------------
+\usepackage[
+  letterpaper,
+  top=0.9in,
+  bottom=0.9in,
+  left=0.85in,
+  right=0.85in,
+  headheight=14pt
+]{geometry}
+
+% ----- Encoding & language -------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+
+
+% ----- Typography ----------------------------------------------------------
+\usepackage{XCharter}
+
+% Section headings
+\usepackage{titlesec}
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.4em}
+
+% Remove section numbering
+\setcounter{secnumdepth}{0}
+
+% ----- Spacing & paragraphs ------------------------------------------------
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+% ----- Graphics & color ----------------------------------------------------
+\usepackage{graphicx}
+\usepackage{xcolor}
+\definecolor{linkcolor}{HTML}{1F4E79}
+
+% ----- Hyperlinks ----------------------------------------------------------
+\usepackage[
+  colorlinks=true,
+  linkcolor=linkcolor,
+  urlcolor=linkcolor,
+  citecolor=linkcolor
+]{hyperref}
+
+% ----- Tables, figures, captions ------------------------------------------
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf, skip=6pt}
+
+% ----- Math ----------------------------------------------------------------
+\usepackage{amsmath, amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+
+% ----- Footnotes -----------------------------------------------------------
+\usepackage[hang, flushmargin]{footmisc}
+\setlength{\footnotesep}{0.8em}
+
+% ----- Headers & footers ---------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\thepage}
+
+\fancypagestyle{firstpage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+
+% ----- Logo lockup ---------------------------------------------------------
+\newcommand{\WORDMARKFILE}{../assets/SVVVL_Research_Wordmark.pdf}
+\newcommand{\WORDMARKWIDTH}{1.5in}
+\newcommand{\LOCKUPGAP}{0.01in}
+
+% The lockup itself: symbol above wordmark, both centered within a box
+% the width of the symbol so the wordmark sits naturally beneath it.
+\newcommand{\logolockup}{%
+  \begin{minipage}{\WORDMARKWIDTH}
+    \centering
+    \includegraphics[width=\WORDMARKWIDTH]{\WORDMARKFILE}
+  \end{minipage}%
+}
+
+% Title block command: \makecover{Title}{Subtitle}{Authors}{Date}
+\newcommand{\makecover}[4]{%
+  \thispagestyle{firstpage}%
+  \noindent\logolockup\par
+  \vspace{2.2em}
+  {\fontsize{26pt}{30pt}\selectfont\bfseries
+   \hyphenpenalty=10000\exhyphenpenalty=10000\sloppy
+   #1\par}
+  \vspace{0.6em}
+  {\fontsize{15pt}{18pt}\selectfont\itshape\color{black!70}
+   \hyphenpenalty=10000\exhyphenpenalty=10000\sloppy
+   #2\par}
+  \vspace{1.6em}
+  {\normalsize\color{black!60} #3\par}
+  \vspace{0.2em}
+  {\normalsize\color{black!60} #4\par}
+  \vspace{1.8em}
+}
+
+% ----- Theorem environments ------------------------------------------------
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+
+% ----- Custom commands -----------------------------------------------------
+% General-purpose math operators reused across papers. Add paper-specific
+% notation macros below as needed.
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Corr}{\mathrm{Corr}}
+\newcommand{\dd}{\mathrm{d}}
+% e.g. \newcommand{\mysymbol}{...}
+
+% =============================================================================
+\begin{document}
+% =============================================================================
+
+% --- COVER -------------------------------------------------------------------
+\makecover
+  {TITLE}
+  {Subtitle}
+  {J.~E. Whitehead~III\footnote{SVVVL, Towson, MD, United States.
+   Contact: \href{mailto:james.whitehead@svvvl.com}{james.whitehead@svvvl.com}.
+   See Disclosures at the end of this document.}}
+  {\today}
+
+% --- EPIGRAPH (optional) -----------------------------------------------------
+% \vspace{-0.5em}
+% \begin{quote}
+% \itshape
+% ``Epigraph quotation.''\\
+% \textnormal{--- Attribution}
+% \end{quote}
+% \vspace{0.5em}
+
+% --- ABSTRACT ----------------------------------------------------------------
+\begin{quote}
+\itshape
+Abstract goes here.
+\end{quote}
+
+
+\newpage
+% --- INTRODUCTION ------------------------------------------------------------
+\section{Introduction}
+
+Body text.
+
+% --- RELATED LITERATURE ------------------------------------------------------
+\section{Related Literature}
+
+Body text. Cite references with the hyperlink form, e.g.~[\hyperlink{ref:1}{1}].
+
+% --- BODY SECTIONS -----------------------------------------------------------
+\section{Section Title}
+
+\subsection{Subsection Title}
+
+Body text. Reference equations with \verb|\eqref{eq:label}|, tables with
+\verb|\ref{tab:label}|.
+
+% Example numbered equation:
+% \begin{equation}
+%   y = f(x).
+%   \label{eq:example}
+% \end{equation}
+
+% Example table in house style:
+% \begin{table}[ht]
+% \centering
+% \caption{Caption.}
+% \label{tab:example}
+% \renewcommand{\arraystretch}{1.4}
+% \begin{tabular}{p{6.5cm} p{6.5cm}}
+% \toprule
+% \textbf{Column A} & \textbf{Column B} \\
+% \midrule
+% Row & Row \\
+% \bottomrule
+% \end{tabular}
+% \end{table}
+
+% --- CONCLUSION --------------------------------------------------------------
+\section{Conclusion}
+
+Body text.
+
+\newpage
+% --- REFERENCES --------------------------------------------------------------
+% Hand-numbered list. Cite in text with [\hyperlink{ref:N}{N}]; each entry
+% sets a matching \hypertarget{ref:N}{}. Keep numbering in sync with the list.
+\section{Further Reading and References}
+
+\begin{itemize}\setlength{\itemsep}{0.4em}
+
+  \item[{[1]}]\hypertarget{ref:1}{} Author, A. (Year). ``Title.''
+    \textit{Journal}, Volume(Issue), pages.
+
+\end{itemize}
+
+\newpage
+% --- DISCLOSURES -------------------------------------------------------------
+\section{Disclosures}
+
+The views expressed in this document are those of the author and
+SVVVL alone and do not constitute investment, legal, tax, or
+accounting advice. This document is provided for informational and
+research purposes only and is not an offer or solicitation to buy or
+sell any security or financial product.
+
+The framework presented is theoretical and relies on idealized
+assumptions that do not hold in practice. The results
+should not be implemented in a real portfolio without additional
+constraints and considerations not addressed in this paper.
+
+While reasonable care has been taken in the preparation of this
+document, no representation or warranty, express or implied, is made
+as to its accuracy or completeness.
+
+Reading this document does not create an advisory, fiduciary, or
+client relationship of any kind between the reader and SVVVL or the
+author.
+
+\end{document}

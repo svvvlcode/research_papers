@@ -1,0 +1,321 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\usepackage[bookmarks=true,bookmarksopen=true,bookmarksnumbered=true,hidelinks]{hyperref}
+
+\title{Optimal Pacing in Thoroughbred Racing\\
+Stage 0: The Undiscounted, Unfatigued Forward Model and Its Inference}
+\author{J. E. Whitehead III \\ Head of R\&D, SVVVL}
+\date{}
+
+\DeclareMathOperator{\sigmoid}{sigmoid}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator{\clamp}{clamp}
+
+\newcommand{\dt}{\widehat{\delta t}}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+We specify Stage 0 of an incremental program for learning each horse's pacing parameters by Bayesian inference. Stage 0 is the smallest reduction of the full variational model (companion note, \emph{A Log-Reparameterized Variational Formulation with Bounded Force}) that still exercises the entire inference path --- a boundary-value solve, the Gamma likelihood, and parameter estimation --- end to end. We seek the eleven parameters first as a maximum-a-posteriori (MAP) point estimate, the Stage 0 deliverable; refining to an approximate posterior by a Laplace Gaussian about the mode, and to the exact posterior by No-U-Turn sampling (NUTS), are progressively more expensive rungs the same machinery reaches when wanted. It switches off the late-race discount ($\alpha = 0$) and both fatigue activations ($\phi_f \equiv \phi_b \equiv 1$), keeping the log-reserve and logit-force reparameterizations, the hump-shaped aerobic supply, and --- at fixed rates rather than sampled --- a smooth saturation on the force slew. Two features carry over from the full model unchanged. The force is the convex blend $f = \sigma(m)/v + (f_M - \sigma(m)/v)\,\sigmoid(\psi)$, floored at the aerobic-supply-equivalent force $\sigma/v$, so the anaerobic reserve drains monotonically. And the trajectory is a two-point boundary-value problem: the terminal reserve is pinned to a learned finishing fraction, $u(D) = \ln\varphi_T$, and the gate costate $\psi(0)$ is free, selected by the solve. The result is three first-order ordinary differential equations in $(v, u, \psi)$ solved by Hermite--Simpson collocation, with eleven parameters per horse. The document has two parts: Part~I states the Stage 0 theory and its parameter table; Part~II lays out the implementation architecture and pseudocode on an all-JAX stack (optimistix collocation, NumPyro), with a validation protocol whose purpose is to prove the pipeline recovers known parameters from synthetic data before any modulation is restored.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\part*{Part I --- Theory}
+\addcontentsline{toc}{section}{Part I --- Theory}
+
+\section{Why Stage 0}
+
+The full model carries roughly twenty parameters per horse, several of which act only in the last stretch of the race and are weakly informed by sector times: the two fatigue activations and the depletion-modulated slew bounds all bite near the finish, exactly where coarse sector times constrain them least. Fitting all of it at once would conflate three distinct failure modes: a solver bug, a misspecified likelihood, and a non-identifiable posterior. We cannot tell them apart by staring at a stuck sampler.
+
+Stage 0 removes that ambiguity. It strips the model to the smallest piece that still runs the whole machine: solve the boundary-value system, read off sector times, evaluate a Gamma likelihood, and optimize the log-posterior to a MAP point estimate (optionally exploring the full posterior by NUTS). Its job is not race realism --- it has no late-race premium and a flat force cap --- but \emph{pipeline validation}: confirm on synthetic data, where the truth is known, that the solver, the likelihood, and the estimator together recover the parameters that generated the data. Once Stage 0 is trustworthy, each later stage restores one block at its ``off'' limit and reuses the Stage 0 posterior to initialize and anchor the next fit. The ladder is
+
+\begin{quote}
+Stage 0 (this note): $\alpha = 0$, $\phi_f \equiv \phi_b \equiv 1$, slew at fixed rate. \;$\to$\;
+Stage 1: discount $(d, \varepsilon, \alpha)$. \;$\to$\;
+Stage 2: force-cap modulation $\phi_f$. \;$\to$\;
+Stage 3: depletion-modulated slew bounds and $\phi_b$.
+\end{quote}
+
+\section{The Stage 0 Reduction}
+
+Stage 0 is the full forward system (companion note, \S10) with its late-race and fatigue machinery switched off. Two limits zero a block of the model outright, and with it a block of parameters; the slew saturation is not switched off but frozen to fixed rates.
+
+\paragraph{Discount off.} Set $\alpha = 0$. The discount weight $W(s) = (d - s + \varepsilon)^{-\alpha}$ collapses to $W \equiv 1$ and its logarithmic rate $\rho(s) = \alpha/(d - s + \varepsilon)$ to $\rho \equiv 0$. Because $d$ and $\varepsilon$ enter the model \emph{only} through $\rho$, they drop out entirely: Stage 0 has no late-race premium and no horizon parameter. The symbol $d$ reverts to its plain meaning --- the race distance --- which is now just the upper limit of integration, written $D$ below to avoid confusion with the discount horizon of later stages.
+
+\paragraph{Force-cap fatigue off.} Set $\phi_f(m) \equiv 1$. The propulsive cap is the constant $f_M$ rather than the depletion-modulated $f_M\,\phi_f(m)$, and the moving-cap term $-(\phi_f'(m)/\phi_f(m))\,m\,u'$ in the $\psi$ law of motion vanishes with $\phi_f' \equiv 0$. The three cap-modulation parameters $\phi_{f,\min}, m_f^*, \kappa_f$ drop out.
+
+\paragraph{Slew saturation frozen, not removed.} The smooth saturation on the force slew (companion note, \S8) stays on, but at \emph{fixed} rates rather than depletion-modulated ones: the second fatigue activation $\phi_b$ (parameters $\phi_{b,\min}, m_b^*, \kappa_b$) drops out, and the release and build rates $a, b$ become two fixed numerical constants. Stage 0 also drops the rail-dependent half-widths of the full model --- which let an intermediate solver iterate escape through the band that opens wide at a force rail --- for a constant band $(-a, b)$. Both choices are detailed in \S\ref{sec:forward}; the upshot is that the costate keeps its Euler--Lagrange \emph{shape} but cannot run away near the force cap, which is what makes the boundary-value solve robust.
+
+\paragraph{What is kept.} The two devices that make the system well-behaved survive untouched. The log reserve $u = \ln(m/m_0)$ keeps $m > 0$ structurally. The force is the convex blend $f = \sigma(m)/v + (f_M - \sigma(m)/v)\,\sigmoid(\psi)$, floored at the aerobic-supply-equivalent force $\sigma/v$ and capped at $f_M$, so $f \in (\sigma/v, f_M)$ structurally \emph{and} the reserve drains monotonically (\S\ref{sec:forward}); the logit variable $\psi$ now sets the fraction of the way from floor to cap rather than from zero to cap. So does the smooth hump-shaped aerobic supply $\sigma(m)$ and its derivative,
+\begin{equation}\label{eq:sigma}
+\sigma(m) = \sigma_{\max}\, g_1(m)\, g_2(m), \qquad
+g_1(m) = \frac{1}{1 + e^{\beta_1(m - m_1)/m_0}}, \quad
+g_2(m) = \frac{1}{1 + e^{-\beta_2(m - m_2)/m_0}},
+\end{equation}
+\begin{equation}\label{eq:sigmaprime}
+\sigma'(m) = \frac{\sigma(m)}{m_0}\bigl[\beta_2\, w_2(m) - \beta_1\, w_1(m)\bigr], \qquad
+w_1 = 1 - g_1, \quad w_2 = 1 - g_2,
+\end{equation}
+with $0 < m_2 < m_1 < m_0$ and $\beta_1, \beta_2 > 0$ exactly as in the companion note.
+
+\section{The Stage 0 Forward System}\label{sec:forward}
+
+With the discount and fatigue off, the forward system is three first-order equations in $(v, u, \psi)$:
+\begin{equation}\label{eq:forward}
+\begin{cases}
+v'(s) = -\dfrac{1}{\tau} + \dfrac{f}{v}, \\[2ex]
+u'(s) = \dfrac{1}{m}\left(\dfrac{\sigma(m)}{v} - f\right), \\[2ex]
+\psi'(s) = \dfrac{b - a}{2} + \dfrac{a + b}{2}\,\tanh\!\left(\dfrac{2\,\psi'_\star(s) - (b - a)}{a + b}\right),
+\end{cases}
+\end{equation}
+where $m = m_0\, e^{u}$ throughout, $\sigma, \sigma'$ are \eqref{eq:sigma}--\eqref{eq:sigmaprime}, and the force is the convex blend
+\begin{equation}\label{eq:blend}
+f = \frac{\sigma(m)}{v} + \left(f_M - \frac{\sigma(m)}{v}\right)\sigmoid(\psi),
+\end{equation}
+floored at the aerobic-supply-equivalent force $\sigma/v$ and capped at $f_M$, so $f \in (\sigma/v, f_M)$.
+
+\paragraph{Monotone reserve.} The floor is the point of the blend. Substituting \eqref{eq:blend} into the reserve law collapses it to
+\begin{equation}\label{eq:umono}
+u'(s) = \frac{1}{m}\left(\frac{\sigma(m)}{v} - f\right) = -\frac{f_M - \sigma(m)/v}{m}\,\sigmoid(\psi) \;\leq\; 0,
+\end{equation}
+so the anaerobic reserve drains monotonically for \emph{any} $\psi$ --- the ``regenerate above full'' pathology of the bare $f = f_M\,\sigmoid(\psi)$ map, where $\sigma/v$ can exceed $f$ and push $u' > 0$, cannot occur. The price is that the floored force is no longer the strict Euler--Lagrange optimum: it is the EL-\emph{shaped} effort projected onto the monotone-feasible region. We take that trade for a structurally well-posed reserve.
+
+\paragraph{The costate rate.} The argument $\psi'_\star$ is the EL2 law of motion (companion note, Eq.~13) at $\rho = 0$ and $\phi_f = 1$. Substituting $v'/v = -1/(\tau v) + f/v^2$ gives the explicit, autonomous rate
+\begin{equation}\label{eq:psistar-explicit}
+\psi'_\star(s) = \frac{\sigma'(m)/v + 1/(\tau v) - f/v^2}{1 - f/f_M},
+\end{equation}
+a function of $(v, u, \psi)$ and the parameters alone: the aerobic sensitivity $\sigma'(m)/v$ net of the velocity growth rate, stiffened by the logit factor $1/(1 - f/f_M)$ as $f$ nears the cap. That stiffening is what makes $\psi'_\star$ run away near the cap, and what the saturation tames.
+
+\paragraph{The slew saturation.} The third line of \eqref{eq:forward} squashes $\psi'_\star$ through a smooth, asymmetric saturation into the fixed band $(-a, b)$: it maps $\mathbb{R} \to (-a, b)$, has unit slope through the interior (so $\psi' \approx \psi'_\star$ when the EL rate is mild), and saturates at $-a$ or $b$ when $\psi'_\star$ is extreme. The rates are two \emph{fixed numerical constants}, $a = 3 \times 10^{-3}$ (release) and $b = 4 \times 10^{-3}$ (build), on the scale of the Mercier--Aftalion bang-bang slew limits; $a < b$ lets force build a touch faster than it sheds. They are regularizers, not sampled parameters, so the verbatim prior table (\S\ref{sec:params}) is untouched. This is the genuinely smooth $\tanh$, not the companion note's clamp (its $\tanh \circ \tanh^{-1}$ composite collapses to a kinked hard clamp with flat-gradient regions); $C^\infty$ everywhere, it keeps the collocation residual differentiable for the sampler. The constant band replaces the full model's depletion-modulated, rail-dependent half-widths: those diverge at a force rail and let an intermediate solver iterate escape through the gap, whereas the constant band bounds $\psi'$ at every iterate and keeps the solve in its basin. Bounding $\psi'$ bounds the controlled part of the force slew through the blend, $f' = (\sigma/v)'(1 - \sigmoid\psi) + \kappa\,\psi'$ with envelope $\kappa = (f_M - \sigma/v)\,\sigmoid(\psi)(1 - \sigmoid(\psi))$, which itself vanishes at the floor and the cap.
+
+\paragraph{Boundary conditions.} The system is a two-point boundary-value problem on $s \in [0, D]$ --- gate speed and full gate reserve at the start, terminal reserve at the wire:
+\begin{equation}\label{eq:bc}
+v(0) = v_0, \qquad u(0) = 0, \qquad u(D) = \ln \varphi_T,
+\end{equation}
+with the gate costate $\psi(0)$ left \emph{free}. Here $\varphi_T = m(D)/m_0 \in (0, 1)$ is the learned finishing fraction --- the share of the gate reserve still in hand at the wire --- which replaces the full-depletion endpoint $m(D) = 0$ of the strict optimum. Why a boundary-value problem and not the initial-value integration of earlier drafts: the $\psi$ equation is a costate, anti-stable under forward integration, so a small error in a guessed $\psi(0)$ grows exponentially over $[0, D]$ and the trajectory blows up. We therefore discretize the whole trajectory and solve it at once (Part~II), letting the solve \emph{select} the $\psi(0)$ that lands on $u(D) = \ln\varphi_T$ rather than guessing it. The gate force then falls out as a derived quantity,
+\begin{equation}\label{eq:f0-derived}
+f_0 = \frac{\sigma(m_0)}{v_0} + \left(f_M - \frac{\sigma(m_0)}{v_0}\right)\sigmoid(\psi(0)).
+\end{equation}
+The physical states are recovered as $m(s) = m_0\, e^{u(s)} > 0$ and $f(s)$ from the blend \eqref{eq:blend} in $(\sigma/v, f_M)$, both respecting their bounds by construction.
+
+\paragraph{The optimality identity is now informational.} At $\alpha = 0$ the on-shell optimality identity (companion note, Eq.~14) reads
+\begin{equation}\label{eq:identity}
+\sigma'(m(s)) = v'(s) - \frac{\sigma(m(s))}{v(s)^2},
+\end{equation}
+independent of any discount. Along a strict Euler--Lagrange trajectory it holds pointwise. But the floored blend \eqref{eq:blend} breaks the first EL equation by design --- the force is projected onto the monotone-feasible region --- so \eqref{eq:identity} is \emph{expected} to depart from zero wherever the floor binds, and a nonzero residual is no longer an error signal. The structural guarantee that replaces it is reserve monotonicity \eqref{eq:umono}: $u'(s) \leq 0$ holds exactly, for any $\psi$, and is what a Stage 0 trajectory is checked against (Part~II, \S\ref{sec:validation}).
+
+\section{The Likelihood}
+
+The forward map is deterministic: given parameters $\theta$, solving the boundary-value problem \eqref{eq:forward}--\eqref{eq:bc} yields a velocity trajectory $\hat v(s; \theta)$ and hence predicted sector times
+\begin{equation}\label{eq:sectortime}
+\dt_j(\theta) = \int_{s_{j-1}}^{s_j} \frac{ds}{\hat v(s; \theta)}, \qquad j = 1, \dots, J,
+\end{equation}
+over a partition $0 = s_0 < s_1 < \cdots < s_J = D$ of the race into $J$ sectors. Observed sector times are positive and right-skewed with variance growing with the mean, so the likelihood is Gamma in shape--rate form,
+\begin{equation}\label{eq:likelihood}
+\delta t_j \mid \theta \;\sim\; \text{Gamma}\!\left(\frac{1}{\eta},\; \frac{1}{\eta\, \dt_j(\theta)}\right),
+\qquad
+\mathbb{E}[\delta t_j \mid \theta] = \dt_j(\theta), \quad
+\mathrm{Var}[\delta t_j \mid \theta] = \eta\, \dt_j(\theta)^2,
+\end{equation}
+unchanged from the companion note. The single dispersion $\eta$ sets the per-sector coefficient of variation $\sqrt{\eta}$. This is the inference target of Stage 0: the eleven parameters of Table~\ref{tab:stage0} given a horse's sector times, sought first as a MAP point estimate (Part~II).
+
+\section{Stage 0 Parameters}\label{sec:params}
+
+Eleven parameters survive the reduction: the two mechanical constants $\tau, f_M$; the gate speed $v_0$ and the finishing fraction $\varphi_T$; the peak aerobic power $\sigma_{\max}$ and the reserve latents $z_2, z_{12}, z_{01}$ (which build $0 < m_2 < m_1 < m_0$ by construction) together with the knee steepnesses $\beta_1, \beta_2$; and the likelihood dispersion $\eta$. The gate force $f_0$ is no longer a parameter --- it is derived from the boundary-value solve \eqref{eq:f0-derived} --- and $\varphi_T$ takes its place, entering as the terminal condition $u(D) = \ln\varphi_T$. The nine parameters tied to the switched-off blocks --- $d, \varepsilon, \alpha$ (discount) and $\phi_{f,\min}, m_f^*, \kappa_f, \phi_{b,\min}, m_b^*, \kappa_b$ (fatigue) --- are absent. The slew rates $a, b$ are outside the table too, but for a different reason: the saturation is \emph{on}, with $a, b$ held at fixed numerical values (\S\ref{sec:forward}) rather than sampled, so the verbatim prior table below is untouched.
+
+Priors are inherited verbatim from the companion note (\S12); Stage 0 introduces no new hyperparameters. Inference is performed on the unconstrained transformed scale: $\ln$ for strictly positive parameters, the logit-with-scale transform $\ln(c\,x/(c - x))$ for parameters bounded in $(0, c)$, and the identity for the real-valued reserve latents, where $m_2 = e^{z_2}$, $m_1 = m_2(1 + e^{z_{12}})$, $m_0 = m_1(1 + e^{z_{01}})$. For the normal priors the center column is the mean $\mu$ and the spread is the variance $\sigma^2$ on the transformed scale; for the LogisticBeta (LB) priors the center is the prior mean on the natural scale and the spread is implicit in the Beta parameters.
+
+\begin{small}
+\begin{longtable}{@{}p{1.7cm}p{3.4cm}p{0.9cm}p{1.4cm}p{1.6cm}p{2.1cm}p{1.0cm}p{0.9cm}@{}}
+\caption{Stage 0 parameters, transforms, and inherited priors.}\label{tab:stage0}\\
+\toprule
+Symbol & Meaning & Dim. & Support & Transform & Prior & Center & Spread \\
+\midrule
+\endfirsthead
+\toprule
+Symbol & Meaning & Dim. & Support & Transform & Prior & Center & Spread \\
+\midrule
+\endhead
+$\tau$ & Friction timescale & s & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.324 & 0.0862 \\
+$f_M$ & Max force per mass & m s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.635 & 0.0862 \\
+$v_0$ & Initial velocity & m s$^{-1}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.609 & 0.223 \\
+$\varphi_T$ & Terminal reserve frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(1.5, 12)$ & 0.11 & --- \\
+$\sigma_{\max}$ & Peak aerobic power & m$^2$s$^{-3}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 3.931 & 0.0862 \\
+$z_2$ & $m_2 = e^{z_2}$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 6.908 & 0.0862 \\
+$z_{12}$ & $m_1 = m_2(1+e^{z_{12}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 0.199 & 0.0862 \\
+$z_{01}$ & $m_0 = m_1(1+e^{z_{01}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & $-1.047$ & 0.0862 \\
+$\beta_1$ & Warm-up steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$\beta_2$ & Fall-off steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$\eta$ & Gamma dispersion & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-4.605$ & 0.223 \\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\section{What Stage 0 Cannot Capture}
+
+One structural property and two limitations matter for reading a Stage 0 fit. By construction the reserve drains monotonically \eqref{eq:umono}, so no fit can produce the non-physical reserve regeneration the floor was built to prevent --- that much is guaranteed, not hoped for. The limitations are what the reduction gives up. First, with $\rho \equiv 0$ there is no late-race premium, so the pronounced finishing kick of the full model --- which the discount and the fatigue activations produce --- is absent; the floored blend permits at most a mild late uptick where $\sigma'(m)$ turns positive near the finish. Second, the cap is a flat $f_M$, so there is no shrinking late-race headroom. A Stage 0 fit to real data will therefore be biased in the final sector, attributing late-race structure to whatever Stage 0 parameters can absorb it. This is expected and acceptable. Stage 0 is judged by synthetic recovery and sampler health (Part~II, \S\ref{sec:validation}), not by its fit to a real horse's stretch run.
+
+\newpage
+\part*{Part II --- Implementation}
+\addcontentsline{toc}{section}{Part II --- Implementation}
+
+\section{The Inference Ladder: MAP \texorpdfstring{$\to$}{->} Laplace \texorpdfstring{$\to$}{->} NUTS}\label{sec:ladder}
+
+Going straight for the full posterior is more than Stage 0 needs and more than is wise to debug first. The deliverable is a \emph{point estimate} --- the most probable parameters given the data --- and richer descriptions of the posterior are optional refinements reached by climbing the same machinery. Three rungs, each consuming the rung below:
+
+\begin{enumerate}
+\item[\textbf{MAP}] \textbf{(the deliverable).} Maximize the log-posterior --- the Gamma log-likelihood \eqref{eq:likelihood} plus the log-prior --- to its mode $\hat\theta$. This is the cheapest possible use of the pipeline: one gradient-based optimization, where NUTS spends thousands of leapfrog steps and a boundary-value solve at each. It reuses, unchanged, the same log-density and the same implicit-function-theorem gradients the sampler would use --- it simply ascends them instead of sampling from them.
+
+\item[\textbf{Laplace}] \textbf{(approximate posterior).} Fit the Gaussian whose mean is $\hat\theta$ and whose covariance is the inverse Hessian of the negative log-posterior at the mode, $\Sigma = \bigl(-\nabla^2 \log p(\hat\theta \mid \text{data})\bigr)^{-1}$. The Hessian is one more automatic-differentiation pass (\texttt{jax.hessian}) at a single point --- nearly free next to a sampling run --- and it buys a first, curvature-based read of the posterior width and correlations.
+
+\item[\textbf{NUTS}] \textbf{(exact posterior).} The asymptotically exact gold standard, but now \emph{initialized at} $\hat\theta$ so warmup starts inside the high-density basin, and optionally mass-matrix-preconditioned by the Laplace $\Sigma$ so the sampler inherits the local geometry. The MAP and Laplace rungs are not throwaway scaffolding; they are how the expensive rung is made to start well.
+\end{enumerate}
+
+\paragraph{One subtlety: the scale.} The MAP is the mode on the \emph{unconstrained} scale of \S\ref{sec:params} --- the log-posterior there carries the change-of-variables Jacobian of each transform, so the mode is parameterization-dependent (it is not the mode of the natural-scale density). This is the right scale for the optimization and for the Gaussian: the transforms are chosen precisely to make the unconstrained posterior closer to Gaussian, so the Laplace fit is most defensible there and is then pushed through the transforms to report natural-scale quantities.
+
+\paragraph{A free identifiability diagnostic.} The Laplace Hessian is more than a covariance. Its eigendecomposition reads off the posterior's stiff and sloppy directions directly: a near-zero eigenvalue is a flat direction the data cannot pin, an eigenvector spread across several parameters is a ridge along which they trade off. This is exactly the identifiability question Stage 0 asks of $\beta_1, \beta_2$ (\S\ref{sec:validation}, check D), answered from one Hessian at the MAP rather than read off a completed sampling run.
+
+\section{Stack: Why All-JAX}
+
+The methodology has three computational pieces: the boundary-value solve, the inference layer (MAP optimization; optionally Laplace and NUTS, \S\ref{sec:ladder}), and the posterior-predictive Monte Carlo of the companion note (\S13). The first needs gradients of $\dt_j(\theta)$ with respect to $\theta$; the third is a nested-\texttt{vmap} sweep over many parameter draws and sector-noise replicates. Both force the substrate to be JAX. The only real choice is the inference layer on top of the log-density, and the criteria are transparency and computational efficiency.
+
+We use \textbf{NumPyro}. Its model is a near-literal transcription of the math: one \texttt{numpyro.sample} per row of Table~\ref{tab:stage0}, one call to the boundary-value solver for the sector means, one Gamma statement for the likelihood. Crucially, the collocation solve sits \emph{inside} the model as an ordinary JAX call --- there is no foreign-function boundary to cross, gradients of the sector means flow by automatic differentiation through the residual and by the implicit function theorem through the converged root, and the whole log-density plus its gradient compile into a single XLA program. The constraint-transform Jacobians are handled by the library rather than hand-rolled. The same model serves all three rungs of \S\ref{sec:ladder}: \texttt{AutoDelta} with stochastic variational inference (SVI) optimizes the log-density to the MAP, \texttt{AutoLaplaceApproximation} adds the inverse-Hessian Gaussian about it, and \texttt{MCMC(NUTS)} samples it --- one density object, three back ends, no glue code between them.
+
+On efficiency, the dominant cost is the boundary-value solves, not the inference bookkeeping; the levers that matter --- solver choice, fixed array shapes, 64-bit precision, and the nested \texttt{vmap} of the predictive --- are identical across the rungs. The MAP rung is cheapest by far: one gradient-based optimization rather than thousands of leapfrog steps, each of which costs a solve. NumPyro adds no overhead because nothing crosses a backend boundary. (A PyMC implementation is possible but would wrap the collocation solve as a PyTensor operator with a hand-written vector--Jacobian product before lowering back to JAX; that wrapper is an opacity seam and a translation cost that buy nothing on speed. BlackJAX is the alternative if one prefers to write the log-density by hand at identical speed and more boilerplate.)
+
+\section{Module Architecture}
+
+The implementation factors into single-responsibility modules. Signatures below are illustrative.
+
+{\sloppy
+\begin{itemize}
+\item \texttt{physiology} --- \texttt{sigma(m, p)} and \texttt{sigma\_prime(m, p)} evaluate \eqref{eq:sigma}--\eqref{eq:sigmaprime}, the two-logistic hump and its derivative. Pure functions of the reserve and the aerobic parameters.
+
+\item \texttt{dynamics.vector\_field(s, y, args)} --- the right-hand side of \eqref{eq:forward}. The state is \emph{augmented} to $y = (v, u, \psi, t)$ with $t'(s) = 1/v$, so cumulative elapsed time can be read off as differences of $t$ at the sector edges --- no separate quadrature for \eqref{eq:sectortime}. Internally it forms $m = m_0 e^u$, the blended force $f$ \eqref{eq:blend}, calls \texttt{physiology}, computes the explicit costate rate $\psi'_\star$ \eqref{eq:psistar-explicit}, and returns $(v', u', \psi', t')$ with the third entry the smooth squash of $\psi'_\star$ into the band $(-a, b)$.
+
+\item \texttt{solve.solve\_forward(p, edges)} --- the forward map. It reads the terminal log-reserve off the finishing fraction, $u_T = \ln\varphi_T$, and calls \texttt{solve\_bvp}, which lays a Hermite--Simpson mesh (each sector split into equal steps no longer than \texttt{max\_step\_m}, so sector edges land on nodes), drives the collocation defects plus the three boundary conditions of \eqref{eq:bc} to zero, and reads the $\dt$ sector means off the cumulative-time quadrature. Only the three coupled states $(v, u, \psi)$ enter the root-find; the anti-stable costate makes a forward shoot blow up, so $\psi(0)$ is solved for, not integrated from. The square system is solved in two stages --- globally convergent Levenberg--Marquardt from the ramped guess, then a QR-Newton root-find to polish to machine precision (\S\ref{sec:guards}). Gradients flow by implicit differentiation of the converged root; a non-convergent solve returns \texttt{NaN}.
+
+\item \texttt{transforms} --- the natural-to-unconstrained maps of Table~\ref{tab:stage0}, expressed through NumPyro constraints and \texttt{TransformedDistribution} so the change-of-variables Jacobians are applied automatically. Includes the reserve exp-product $z \to (m_2, m_1, m_0)$ that enforces the ordering.
+
+\item \texttt{model.pacing\_model(data, edges)} --- the NumPyro model. Samples the eleven latents from their priors, assembles $\theta$, computes $\dt = \texttt{solve\_forward}(\theta, \texttt{edges})$, and observes the data under \eqref{eq:likelihood}.
+
+\item \texttt{infer} --- the three rungs of \S\ref{sec:ladder} over the one \texttt{pacing\_model}, sharing 64-bit mode and the data. \texttt{infer.map(...)} runs \texttt{SVI} with an \texttt{AutoDelta} guide (equivalently, minimizes \texttt{numpyro.infer.util.potential\_energy}) to the mode $\hat\theta$ --- the Stage 0 deliverable. \texttt{infer.laplace(...)} wraps \texttt{AutoLaplaceApproximation} to return $\hat\theta$ together with the inverse-Hessian covariance $\Sigma$. \texttt{infer.nuts(..., init=$\hat\theta$, mass=$\Sigma$)} builds \texttt{MCMC(NUTS(pacing\_model), ...)} seeded at the MAP and optionally preconditioned by $\Sigma$, runs warmup and sampling across chains (vectorized), and returns the trace.
+
+\item \texttt{diagnostics} --- for the MAP/Laplace rungs, the eigendecomposition of the Laplace Hessian (stiff vs.\ flat directions, the identifiability read of \S\ref{sec:validation}); for the NUTS rung, $\hat R$, effective sample size, divergence and energy checks via ArviZ on the trace.
+
+\item \texttt{predict.predictive(...)} --- the pure-JAX posterior-predictive sweep (companion note, \S13): nested \texttt{vmap} over posterior $\theta$-draws and sector-noise replicates. Sampler-independent.
+
+\item \texttt{synthetic} --- the Stage 0 acceptance harness: pick a known $\theta^\star$, simulate sector times, recover the MAP $\hat\theta$, and check that it lands near $\theta^\star$ (\S\ref{sec:validation}); NUTS calibration is the optional stronger check.
+\end{itemize}
+\par}
+
+\section{Pseudocode}
+
+\begin{algorithm}[H]
+\caption{\texttt{vector\_field} --- augmented right-hand side of \eqref{eq:forward}}
+\KwIn{location $s$; state $y = (v, u, \psi, t)$; parameters $\theta$; slew rates $a, b$}
+\KwOut{$(v', u', \psi', t')$}
+$m \gets m_0\, e^{u}$ \;
+$\sigma, \sigma' \gets \texttt{physiology}(m;\, \sigma_{\max}, m_0, m_1, m_2, \beta_1, \beta_2)$ \;
+$f \gets \sigma/v + (f_M - \sigma/v)\cdot\sigmoid(\psi)$ \tcp*{floored blend, \eqref{eq:blend}}
+$v' \gets -1/\tau + f/v$ \;
+$u' \gets (\sigma/v - f)/m$ \tcp*{$\leq 0$, \eqref{eq:umono}}
+$\psi'_\star \gets \bigl(\sigma'/v + 1/(\tau v) - f/v^2\bigr) \big/ \bigl(1 - f/f_M\bigr)$ \tcp*{\eqref{eq:psistar-explicit}}
+$\psi' \gets (b-a)/2 + (a+b)/2 \cdot \tanh\bigl((2\psi'_\star - (b-a))/(a+b)\bigr)$ \tcp*{squash into $(-a, b)$}
+$t' \gets 1/v$ \tcp*{cumulative time, for sector read-off}
+\Return $(v', u', \psi', t')$ \;
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{\texttt{solve\_forward} --- sector means by Hermite--Simpson collocation}
+\KwIn{parameters $\theta$; sector edges $s_0 < s_1 < \cdots < s_J$}
+\KwOut{sector means $\dt = (\dt_1, \dots, \dt_J)$}
+$(m_2, m_1, m_0) \gets \texttt{reserve\_from\_latents}(z_2, z_{12}, z_{01})$ \;
+$u_T \gets \ln \varphi_T$ \tcp*{terminal reserve, \eqref{eq:bc}}
+$\text{mesh} \gets$ split each sector into equal steps $\leq \texttt{max\_step\_m}$ \tcp*{edges land on nodes}
+$Y \gets$ ramped initial guess on the mesh \tcp*{$v$: gate$\to$cruise, $u$: $0 \to u_T$, $\psi$: $\logit 0.7$}
+$R(Y) \gets$ Hermite--Simpson defects $\cup\ \{v(0) - v_0,\ u(0),\ u(D) - u_T\}$ \tcp*{square; $\psi(0)$ free}
+$Y \gets \texttt{LevenbergMarquardt}(R,\, Y)$ \tcp*{globalize from the guess}
+$Y \gets \texttt{Newton}(R,\, Y;\ \text{QR})$ \tcp*{polish to a root}
+$T \gets$ cumulative time on the mesh, Hermite--Simpson on $1/v$ \;
+\For{$j \gets 1$ \KwTo $J$}{$\dt_j \gets T_j - T_{j-1}$ \tcp*{difference at the sector edges}}
+\Return $\dt$ \tcp*{\texttt{NaN} if the residual misses tolerance}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{\texttt{pacing\_model} and the inference ladder}
+\KwIn{observed sector times $\{\delta t_j\}$; sector edges}
+\textbf{model:} \;
+\Indp
+sample each latent from its Table~\ref{tab:stage0} prior on the unconstrained scale; assemble $\theta$ \;
+$\dt \gets \texttt{solve\_forward}(\theta,\, \text{edges})$ \;
+$k \gets 1/\eta$; \quad $r_j \gets 1/(\eta\, \dt_j)$ \tcp*{Gamma shape, rate}
+observe $\delta t_j \sim \text{Gamma}(k,\, r_j)$ \tcp*{\eqref{eq:likelihood}}
+\Indm
+\textbf{run:} enable 64-bit; then climb as far as wanted: \;
+\Indp
+$\hat\theta \gets \arg\max \log p(\theta \mid \text{data})$ \tcp*{MAP --- the deliverable}
+$\Sigma \gets \bigl(-\nabla^2 \log p(\hat\theta \mid \text{data})\bigr)^{-1}$ \tcp*{[optional] Laplace}
+$\text{trace} \gets \texttt{NUTS}(\texttt{pacing\_model},\ \text{init}{=}\hat\theta,\ \text{mass}{\propto}\Sigma,\ \text{warmup},\ \text{draws},\ \text{chains})$ \tcp*{[optional] exact}
+\Indm
+\Return $\hat\theta$ (and $\Sigma$, trace if requested) \;
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{\texttt{synthetic\_recovery} --- the Stage 0 acceptance test}
+\KwIn{true parameters $\theta^\star$; edges; replicate count $R$; noise key}
+$\dt^\star \gets \texttt{solve\_forward}(\theta^\star,\, \text{edges})$ \;
+\For{$r \gets 1$ \KwTo $R$}{simulate $\delta t^{(r)}_j \sim \text{Gamma}(1/\eta^\star,\, 1/(\eta^\star \dt^\star_j))$ \tcp*{synthetic races}}
+$\hat\theta^{(r)} \gets \texttt{infer.map}(\{\delta t^{(r)}\},\, \text{edges})$ \tcp*{the bar: MAP per replicate}
+check: $\hat\theta^{(r)}$ lands near $\theta^\star$; the estimator is approximately unbiased over $r$ \;
+$\Sigma \gets \texttt{infer.laplace}$ Hessian at $\hat\theta$; eigen-read for flat directions \tcp*{check D}
+\textit{[optional]} $\text{trace} \gets \texttt{infer.nuts}(\{\delta t^{(r)}\},\, \text{init}{=}\hat\theta)$; posterior covers $\theta^\star$, ranks calibrated, $\hat R \approx 1$, ample ESS, no divergences \;
+\Return report \;
+\end{algorithm}
+
+\section{Numerical Guards and Settings}\label{sec:guards}
+
+\begin{itemize}
+\item \textbf{64-bit precision.} Enable \texttt{jax\_enable\_x64} before any array is built. The Gamma tails and the time integrals lose meaningful digits in 32-bit.
+
+\item \textbf{The near-cap denominator.} On the BVP solution the force stays clear of the cap, but an intermediate solver iterate can drive $f$ toward $f_M$, so the headroom $1 - f/f_M$ in \eqref{eq:psistar-explicit} goes small and the costate rate stiffens. Floor the headroom at a small \texttt{cap\_floor} ($10^{-6}$): the clip is active only on stray iterates, leaves the converged trajectory untouched, and keeps the residual finite. The smooth slew saturation does the rest --- it bounds $\psi'$ so even a stiffened rate cannot run away.
+
+\item \textbf{Static shapes.} Fix the sector count $J$ so the solver and likelihood compile once; a changing shape retriggers JIT compilation and masks the true runtime.
+
+\item \textbf{PRNG discipline.} Split keys structurally --- one branch for parameter draws, one for sector noise --- so the synthetic harness and the predictive sweep are reproducible and their randomness stays independent.
+
+\item \textbf{Solver tolerances.} The honest convergence measure is the collocation residual --- the Hermite--Simpson defects together with the three boundary residuals --- recomputed at the solution rather than trusted from the solver's own flag, since a least-squares stage can stop at a stationary point that is not a root. Accept a solve when that residual sits below \texttt{root\_tol}; loosening the mesh or tolerances to gain speed should be checked against it and against reserve monotonicity \eqref{eq:umono}, not assumed safe.
+\end{itemize}
+
+\section{Validation Protocol}\label{sec:validation}
+
+Stage 0 is accepted when checks A--D pass, in order; E is the optional stronger check on the posterior.
+
+\begin{enumerate}
+\item[\textbf{A}] \textbf{Forward sanity.} Solve the BVP at the prior-mean $\theta$. Confirm the collocation residual is small (the solve converged), $v(s) > 0$, the reserve drains monotonically ($u'(s) \leq 0$, the structural guarantee that replaces the old optimality check), the force sits in the floored band $\sigma/v \leq f(s) < f_M$, the controlled force slew $f'(s)$ stays within its envelope $(-a\kappa, b\kappa)$, and the sector means $\dt_j$ are of plausible magnitude for the race distance.
+
+\item[\textbf{B}] \textbf{Prior predictive.} Draw parameters from the prior, simulate sector times, and confirm they are positive and of realistic size. A prior that emits absurd races is a misspecified prior, caught here cheaply before any fit.
+
+\item[\textbf{C}] \textbf{Synthetic MAP recovery.} The core test, and the Stage 0 bar. Pick a known $\theta^\star$, simulate races, recover the MAP $\hat\theta$, and confirm it lands near $\theta^\star$ --- across many replicates, that the estimator is approximately unbiased and its error shrinks as sectors or replicates grow. This is the cheap, decisive check that solver, likelihood, and optimizer compose correctly; it gates everything above it on the ladder.
+
+\item[\textbf{D}] \textbf{Identifiability read.} Eigendecompose the Laplace Hessian at $\hat\theta$ (\S\ref{sec:ladder}): stiff directions are pinned, near-flat ones are not. Expect the knee steepnesses $\beta_1, \beta_2$ to be weakly identified --- transition sharpness is high-frequency information that coarse sector times wash out --- while $\tau, f_M, v_0, \varphi_T$ resolve well. Read straight off one Hessian, with no sampling, this sets expectations for the later, more confounded stages.
+
+\item[\textbf{E}] \textbf{NUTS calibration (optional, stronger).} When the full posterior is wanted, sample it with NUTS initialized at $\hat\theta$ and confirm it covers $\theta^\star$ with calibrated rank statistics, $\hat R \approx 1$, ample effective sample size, and no divergences. Simulation-based calibration over many $\theta^\star$ draws is the strongest version. This is a richer guarantee than check~C, not a prerequisite for accepting Stage 0.
+\end{enumerate}
+
+\section{Path to Stage 1}
+
+Each later stage restores one block at its ``off'' limit, so Stage 0 nests inside Stage 1, which nests inside Stage 2, and so on. The Stage 0 MAP $\hat\theta$ (and, where computed, the Laplace covariance) seeds the initialization and tightens the priors for the next fit; where a full posterior was sampled, it anchors the next stage as before. Stage 1 reintroduces $(d, \varepsilon, \alpha)$ and the late-race premium; the discount triple is expected to trade off along a ridge, since the three enter only through $\rho(s) = \alpha/(d - s + \varepsilon)$. Stage 3 restores the depletion-modulated slew --- the rail-dependent bounds $a/(1-S)$, $b\,\phi_b/S$ and the second fatigue activation $\phi_b$. Those bounds diverge at a force rail and are the delicate part of the full solve, but the smooth saturation itself, the part that could have starved the sampler of gradients, is already proven here in its constant-band form.
+
+\end{document}

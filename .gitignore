@@ -1,0 +1,18 @@
+# LaTeX build artifacts (compiled PDFs are kept — they are the published artifact)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.idx
+*.ind
+*.lof
+*.log
+*.lot
+*.out
+*.synctex.gz
+*.toc
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db

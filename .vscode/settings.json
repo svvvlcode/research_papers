@@ -1,0 +1,41 @@
+{
+  // ---- LaTeX Workshop: build with latexmk (MiKTeX) -------------------------
+  // Pin the exact MiKTeX binaries so the extension host doesn't accidentally
+  // pick up a different toolchain from PATH (you have a second Perl in miniconda).
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk",
+      "command": "C:/Users/j_whi/AppData/Local/Programs/MiKTeX/miktex/bin/x64/latexmk.exe",
+      "args": [
+        "-pdf",
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "-outdir=%OUTDIR%",
+        "%DOC%"
+      ],
+      "env": {}
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "latexmk",
+      "tools": ["latexmk"]
+    }
+  ],
+
+  // Build the file you're editing; keep aux files beside the .tex.
+  "latex-workshop.latex.outDir": "%DIR%",
+
+  // Auto-build on save, and open the PDF in a VSCode tab.
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.view.pdf.viewer": "tab",
+
+  // Treat aux files as artifacts (cleaned with the clean command, hidden from
+  // the build-recipe file detection).
+  "latex-workshop.latex.clean.fileTypes": [
+    "*.aux", "*.bbl", "*.blg", "*.idx", "*.ind", "*.lof", "*.lot",
+    "*.out", "*.toc", "*.acn", "*.acr", "*.alg", "*.glg", "*.glo",
+    "*.gls", "*.fls", "*.log", "*.fdb_latexmk", "*.snm", "*.synctex.gz", "*.nav"
+  ]
+}
