@@ -52,11 +52,9 @@ Each paper lives **two levels deep** from the repo root, in its own directory un
   No code, tests, or figures are checked in — it builds with LaTeX alone.
 
 LaTeX build artifacts (`*.aux`, `*.log`, `*.fdb_latexmk`, `*.fls`, `*.out`,
-`*.synctex.gz`, etc.) are git-ignored — `template/` and
-`nature_abhors_an_undiversified_bet/` carry a `.gitignore` to that effect. Such artifacts
-are currently checked in under several paper dirs (`nature_abhors_an_undiversified_bet/`,
-`goal_based_investing/`, `optimal_pacing_in_thoroughbred_racing/`) — leave them or clean
-them, but do not treat them as source.
+`*.synctex.gz`, etc.) are git-ignored repo-wide by the single root `.gitignore`. Compiled
+PDFs are the exception — they are kept as the published artifact, not treated as build
+junk. Do not treat any ignored artifact as source.
 
 ## Writing style (prose & docs)
 
