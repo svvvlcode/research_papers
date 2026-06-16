@@ -43,7 +43,7 @@ f(s) &: \text{propulsive force per unit mass, } \mathrm{m\,s^{-2}} \;(= \mathrm{
 \sigma(m) &: \text{aerobic supply per unit mass at reserve } m, \; \mathrm{m^2 s^{-3}} \;(= \mathrm{W\,kg^{-1}}), \\
 \tau &: \text{friction timescale, s.}
 \end{align*}
-The aerobic supply $\sigma(m) > 0$ is hump-shaped on $[0, m_0]$. Physiologically, when $m$ is near $m_0$ the aerobic system has not been activated and $\sigma$ is small. As $m$ decreases, oxygen uptake ramps up and $\sigma$ rises to an interior maximum. Near depletion ($m \to 0^+$), the aerobic system can no longer fully sustain peak output and $\sigma$ falls --- but it does not vanish, nor does it fall below the warm-up value: $0 < \sigma(m_0) < \sigma(0) < \max_m \sigma(m)$. The maximal force per unit mass is $f_M$ ($\mathrm{m\,s^{-2}}$).
+The aerobic supply $\sigma(m) > 0$ is hump-shaped on $[0, m_0]$. Physiologically, when $m$ is near $m_0$ the aerobic system has not been activated and $\sigma$ is small. As $m$ decreases, oxygen uptake ramps up and $\sigma$ rises to an interior maximum. Near depletion ($m \to 0^+$), the aerobic system can no longer fully sustain peak output and $\sigma$ falls --- but it settles to a floor rather than vanishing. The race-start value is pinned to the warm-up anchor $\sigma(m_0) = \tfrac13\sigma_{\max}$ and the fall-off settles to $\sigma_f \approx 0.8\,\sigma_{\max}$, so $0 < \sigma(m_0) < \sigma_f < \max_m \sigma(m)$. The maximal force per unit mass is $f_M$ ($\mathrm{m\,s^{-2}}$).
 
 Following Mercier and Aftalion, the dynamics, written in the spatial variable, are
 \begin{align}
@@ -58,26 +58,32 @@ The standard formulation has three boundary singularities. The state constraint 
 
 \section{A Smooth Form for the Aerobic Supply}
 
-The aerobic supply curve $\sigma(m)$ has a known qualitative shape. At the start of a race, $\dot V_{O_2}$ has not yet ramped to its maximum --- the horse is warming up, and $\sigma$ is depressed. As the race progresses and $m$ depletes, $\sigma$ rises to its plateau $\sigma_{\max}$. Near the finish, when anaerobic stores can no longer compensate for oxygen deficit, $\sigma$ falls again. In short: $\sigma(m)$ is hump-shaped on $[0, m_0]$, low at both ends and peaking in the middle.
+The aerobic supply curve $\sigma(m)$ has a known qualitative shape. At the start of a race, $\dot V_{O_2}$ has not yet ramped to its maximum --- the horse is warming up, and $\sigma$ sits at roughly a third of its peak. As the race progresses and $m$ depletes, $\sigma$ rises to its plateau $\sigma_{\max}$. Near the finish, when anaerobic stores can no longer compensate for oxygen deficit, $\sigma$ falls again --- but only to a floor near $0.8\,\sigma_{\max}$, not to zero. Both endpoint values are the anchors Mercier and Aftalion read from their fitted $\dot V_{O_2}$ profiles. In short: $\sigma(m)$ is hump-shaped on $[0, m_0]$, depressed at both ends and peaking in the middle.
 
-A smooth functional form that captures both knees is the product of two logistic factors:
+A smooth functional form that captures both knees is a product of two logistic factors with a floor on the fall-off:
 \begin{equation}\label{eq:sigma}
-\sigma(m) = \sigma_{\max}\,g_1(m)\,g_2(m),
+\sigma(m) = \sigma_{\max}\,g_1(m)\,\bigl[\varphi_\sigma + (1 - \varphi_\sigma)\,g_2(m)\bigr],
 \end{equation}
 where
 \[
 g_1(m) = \frac{1}{1 + e^{\beta_1(m - m_1)/m_0}},\qquad
 g_2(m) = \frac{1}{1 + e^{-\beta_2(m - m_2)/m_0}},
 \]
-with $m_1 > m_2$ and $\beta_1, \beta_2 > 0$. The factor $g_1$ encodes the warm-up: it is near zero at $m \approx m_0$ (race start) and near one for $m \ll m_1$. The factor $g_2$ encodes the fall-off: it is near one for $m \gg m_2$ and near zero as $m \to 0$. Their product traces the hump.
+with $0 < m_2 < m_1 < m_0$, $\beta_1, \beta_2 > 0$, and a fall-off floor $\varphi_\sigma = \sigma_f/\sigma_{\max} \in (0, 1)$. The factor $g_1$ encodes the warm-up: near zero at $m \approx m_0$ (race start), near one for $m \ll m_1$. The factor $g_2$ encodes the fall-off: near one for $m \gg m_2$ and tending to zero as $m \to 0$, but the bracket floors it at $\varphi_\sigma$, so $\sigma$ settles to $\sigma_f = \varphi_\sigma\,\sigma_{\max}$ at the wire rather than collapsing to zero. Their product traces the hump.
 
-The five parameters $\sigma_{\max}, m_1, m_2, \beta_1, \beta_2$ admit physiological interpretation. $\sigma_{\max}$ is the peak aerobic power per unit mass --- essentially $\dot V_{O_2,\max}$ in energy units. The thresholds $m_1$ and $m_2$ locate the warm-up and fall-off knees in the energy reserve. The slopes $\beta_1$ and $\beta_2$ control the sharpness of the transitions. The paper of Mercier and Aftalion uses a piecewise-linear ansatz with the same physiological content; the smooth form here is its differentiable cousin.
-
-For the calculus of variations we need $\sigma'(m)$. Logarithmic differentiation gives, using $g_i'/g_i = \mp\beta_i(1 - g_i)/m_0$ (with the sign chosen by which factor is decreasing or increasing),
-\begin{equation}\label{eq:sigmaprime}
-\sigma'(m) = \frac{\sigma(m)}{m_0}\bigl[\beta_2\,w_2(m) - \beta_1\,w_1(m)\bigr],
+The warm-up threshold $m_1$ is not a free parameter. We pin the race-start value to its empirical anchor, $\sigma(m_0) = r_0\,\sigma_{\max}$ with $r_0 = \tfrac13$ (Mercier and Aftalion's warm-up start; \S\ref{sec:hypervalues}), by solving that identity for the threshold:
+\begin{equation}\label{eq:m1pin}
+m_1 = m_0\left(1 + \frac{\operatorname{logit}(r_0/A)}{\beta_1}\right), \qquad A = \varphi_\sigma + (1 - \varphi_\sigma)\,g_2(m_0),
 \end{equation}
-where $w_1(m) = 1 - g_1(m)$ and $w_2(m) = 1 - g_2(m)$ are the activation indicators of the warm-up and fall-off regimes, respectively. In the plateau, $w_1 \approx w_2 \approx 0$ and $\sigma'(m) \approx 0$. Near the start, $w_1$ is order one and $\sigma'(m) < 0$. Near the finish, $w_2$ is order one and $\sigma'(m) > 0$.
+where $\operatorname{logit}(x) = \ln\!\frac{x}{1-x}$. This holds $\sigma(m_0) = \tfrac13\sigma_{\max}$ identically across the parameter space and removes $m_1$ from the inferred latents (see the inference reparameterization below).
+
+The parameters $\sigma_{\max}, m_2, \beta_1, \beta_2, \varphi_\sigma$ admit physiological interpretation ($m_1$ follows from \eqref{eq:m1pin}). $\sigma_{\max}$ is the peak aerobic power per unit mass --- essentially $\dot V_{O_2,\max}$ in energy units. The threshold $m_2$ locates the fall-off knee in the energy reserve, $m_1$ the warm-up knee. The slopes $\beta_1$ and $\beta_2$ control the sharpness of the transitions. The floor $\varphi_\sigma = \sigma_f/\sigma_{\max}$ is the fraction of peak power the horse still draws aerobically at the wire. The paper of Mercier and Aftalion uses a piecewise-linear ansatz with the same physiological content; the smooth form here is its differentiable cousin.
+
+For the calculus of variations we need $\sigma'(m)$, the derivative in the reserve $m$ at fixed parameters ($m_1$ from \eqref{eq:m1pin} is constant in $m$). Writing $S(m) = \varphi_\sigma + (1 - \varphi_\sigma)\,g_2(m)$ so that $\sigma = \sigma_{\max}\,g_1\,S$, and using $g_i'/g_i = \mp\beta_i(1 - g_i)/m_0$,
+\begin{equation}\label{eq:sigmaprime}
+\sigma'(m) = \frac{\sigma_{\max}}{m_0}\,g_1(m)\bigl[-\beta_1\,w_1(m)\,S(m) + (1 - \varphi_\sigma)\,\beta_2\,g_2(m)\,w_2(m)\bigr],
+\end{equation}
+where $w_1(m) = 1 - g_1(m)$ and $w_2(m) = 1 - g_2(m)$ are the activation indicators of the warm-up and fall-off regimes. At $\varphi_\sigma = 0$ the bracket collapses to $S = g_2$ and \eqref{eq:sigmaprime} reduces to $\sigma'(m) = (\sigma/m_0)[\beta_2\,w_2 - \beta_1\,w_1]$, the unfloored hump. In the plateau, $w_1 \approx w_2 \approx 0$ and $\sigma'(m) \approx 0$. Near the start, $w_1$ is order one and $\sigma'(m) < 0$. Through the fall-off the floor makes the late rise gentler, since only the fraction $(1 - \varphi_\sigma)$ of $g_2$ still varies.
 
 \section{The Log Reparameterization of the Reserve}
 
@@ -267,10 +273,11 @@ The forward system in Section~10 is deterministic: given a parameter vector $\th
 \]
 in shape-rate parameterization, giving $\mathbb{E}[\delta t_j \mid \theta] = \hat{\delta t}_j(\theta)$ and $\text{Var}[\delta t_j \mid \theta] = \eta\, \hat{\delta t}_j(\theta)^2$. The dispersion $\eta$ governs the sector-time coefficient of variation.
 
-\paragraph{Reparameterization for inference.} Each parameter is mapped to an unconstrained scale on which inference is performed. Strictly positive parameters carry a $\ln$ transform. Parameters bounded in $(0, c)$ for some $c$ carry a logit-with-scale transform $\ln(c x / (c - x))$; the finishing fraction $\varphi_T \in (0, 1)$ is the $c = 1$ case, $\ln(x/(1-x))$. The gate force $f_0$ is no longer sampled --- it is derived from the boundary-value solve (Section~10) --- and $\varphi_T$ takes its place in the parameter vector, entering as the terminal condition $u(d) = \ln \varphi_T$ with the Beta prior below. Three reserve quantities $m_0, m_1, m_2$ are reparameterized into independent latents $z_2, z_{12}, z_{01}$ that enforce $0 < m_2 < m_1 < m_0$ by construction:
+\paragraph{Reparameterization for inference.} Each parameter is mapped to an unconstrained scale on which inference is performed. Strictly positive parameters carry a $\ln$ transform. Parameters bounded in $(0, c)$ for some $c$ carry a logit-with-scale transform $\ln(c x / (c - x))$; the finishing fraction $\varphi_T \in (0, 1)$ is the $c = 1$ case, $\ln(x/(1-x))$. The gate force $f_0$ is no longer sampled --- it is derived from the boundary-value solve (Section~10) --- and $\varphi_T$ takes its place in the parameter vector, entering as the terminal condition $u(d) = \ln \varphi_T$ with the Beta prior below. The two free reserve quantities $m_2, m_0$ are reparameterized into independent latents $z_2, z_{02}$ that enforce $0 < m_2 < m_0$ by construction, and the warm-up threshold $m_1$ is derived from the start pin \eqref{eq:m1pin} rather than sampled:
 \[
-m_2 = e^{z_2}, \qquad m_1 = m_2(1 + e^{z_{12}}), \qquad m_0 = m_1(1 + e^{z_{01}}).
+m_2 = e^{z_2}, \qquad m_0 = m_2(1 + e^{z_{02}}), \qquad m_1 = m_0\!\left(1 + \frac{\operatorname{logit}(r_0/A)}{\beta_1}\right).
 \]
+The fall-off floor $\varphi_\sigma \in (0, 1)$ joins the bounded parameters under the logit transform. Deriving $m_1$ spends one reserve latent that $\varphi_\sigma$ takes back, so the parameter count is unchanged; the prior $m_2/m_0 \approx \tfrac13$ keeps the derived $m_1$ inside $(m_2, m_0)$.
 
 \paragraph{Priors.} Priors on the transformed scale are normal for $\ln$-transformed parameters and logistic-Beta for parameters with bounded support. Hyperparameter values are anchored to point estimates from the optimal-control identification of Mercier and Aftalion (M\&A) 2020, which fits the analogous deterministic model to three Thoroughbreds in Chantilly. Where M\&A provide a value, the prior mean equals the log of the cross-horse average and the variance corresponds to a coefficient of variation of 0.3 on the natural scale: $\sigma^2 = \ln(1 + 0.3^2) = 0.0862$. Where no published anchor exists, the prior is centered at a physically reasonable value with variance $\sigma^2 = \ln(1 + 0.5^2) = 0.223$, admitting a factor of about 1.6 in either direction at one prior standard deviation. The arguments behind individual values are given in Section~\ref{sec:hypervalues}.
 
@@ -302,11 +309,14 @@ No published value exists for the reserve a horse carries past the wire. The str
 \subsection*{Peak aerobic power $\sigma_{\max}$}
 M\&A Tables 1–3: $\sigma_M \in \{47.0, 54.6, 51.29\}$, mean 50.96. Empirical CV 0.075. Prior CV 0.3: $\mu_{\sigma_{\max}} = \ln(50.96) = 3.931$, $\sigma_{\sigma_{\max}}^2 = 0.0862$.
 
-\subsection*{Reserve latents $z_2, z_{12}, z_{01}$}
-M\&A Fig 10 shows the residual reserve at the $\dot V_{O_2}$ fall-off (sprint launch) at approximately one-third of $e^0$ for the longer races. With $m_0 \approx 3000$ J kg$^{-1}$, $m_2 \approx 1000$, hence $\mu_{z_2} = \ln(1000) = 6.908$. The first slope change in Fig 10 marks reaching $\dot V_{O_2,\max}$, where warm-up has fully activated; cross-horse average of $m_1$ is approximately $0.74 m_0 \approx 2220$, yielding gap $m_1/m_2 - 1 \approx 1.22$, hence $\mu_{z_{12}} = \ln(1.22) = 0.199$. With $m_1 \approx 2220$ and $m_0 \approx 3000$, gap $m_0/m_1 - 1 \approx 0.351$, hence $\mu_{z_{01}} = \ln(0.351) = -1.047$. All three carry CV 0.3: $\sigma^2 = 0.0862$.
+\subsection*{Reserve latents $z_2, z_{02}$}
+M\&A Fig 10 shows the residual reserve at the $\dot V_{O_2}$ fall-off (sprint launch) at approximately one-third of $e^0$ for the longer races. With $m_0 \approx 3000$ J kg$^{-1}$, $m_2 \approx 1000$, hence $\mu_{z_2} = \ln(1000) = 6.908$. The full reserve gap is $m_0/m_2 - 1 \approx 2$, hence $\mu_{z_{02}} = \ln(2) = 0.693$. Both carry CV 0.3: $\sigma^2 = 0.0862$. The warm-up threshold $m_1$ is no longer inferred: it is fixed by the start pin \eqref{eq:m1pin} so that $\sigma(m_0) = \tfrac13\sigma_{\max}$, M\&A's warm-up-start value, and lands near $0.93\,m_0$ at the prior mean.
+
+\subsection*{Fall-off floor fraction $\varphi_\sigma$}
+M\&A Tables 1--3 give the terminal aerobic power $\sigma_f/\sigma_M \in \{40.71/47.0,\, 40.3/54.6,\, 41.67/46.71\} = \{0.87, 0.74, 0.89\}$, mean $\approx 0.80$: at the wire the horse still draws about four-fifths of peak $\dot V_{O_2}$. The LogisticBeta prior with Beta hyperparameters $(16, 4)$ has mean 0.80 with one prior standard deviation spanning roughly $[0.74, 0.89]$, the observed range. The warm-up-start fraction $r_0 = \tfrac13$ that pins $m_1$ \eqref{eq:m1pin} is held fixed, not given a prior --- it is the empirical anchor, and letting it float would reintroduce the latent the pin removes.
 
 \subsection*{Knee steepnesses $\beta_1, \beta_2$}
-M\&A use a piecewise-linear $\sigma$ profile with sharp corners. A smooth logistic with $\beta = 10$ traverses each transition over roughly $0.4 m_0$, matching the visual sharpness of their Figs 4a, 6a, 9a. CV 0.5: $\mu_{\beta_1} = \mu_{\beta_2} = \ln(10) = 2.303$, $\sigma^2 = 0.223$.
+M\&A use a piecewise-linear $\sigma$ profile with sharp corners; a smooth logistic with steepness $\beta$ rounds each corner over a 10--90\% width of roughly $4.4\,m_0/\beta$. The warm-up gate $g_1$ must be calibrated in \emph{reserve} space, not distance: $\sigma$ is a function of the anaerobic reserve $m$, and although $\dot V_{O_2}$ reaches its maximum within the first $\sim\!\tfrac13$ of the race in \emph{distance} (Figs 4a, 6a, 9a), the reserve drains fastest at the start, so that same warm-up spends a sizeable fraction of $e^0$. Reading Fig 10 (energy vs distance to finish) against Tables 1--3, $\dot V_{O_2}$ climbs from $\tfrac13\sigma_{\max}$ to $\sigma_{\max}$ while the reserve falls by $f = \{0.42,\, 0.32,\, 0.20\}$ of $e^0$ for the 1300, 1900, 2100\,m races. Our gate reaches $\sigma_{\max}$ once the reserve has fallen by $\approx 3.6\,m_0/\beta_1$, so $\beta_1 \approx 3.6/f = \{8.7,\, 11.4,\, 18.2\}$, mean $\approx 13$ --- calibrating to the distance-plot sharpness instead would over-sharpen $g_1$ roughly threefold. CV 0.5: $\mu_{\beta_1} = \ln(13) = 2.565$, $\sigma^2 = 0.223$. The fall-off gate $g_2$ is left at $\mu_{\beta_2} = \ln(10) = 2.303$, $\sigma^2 = 0.223$ for now; its sharpening is a separate question. Through the start pin \eqref{eq:m1pin}, $\beta_1$ also sets where the derived $m_1$ lands, and the prior is otherwise unchanged.
 
 \subsection*{Slew rates $a, b$}
 M\&A Tables 1–3 (in spatial units, since their $u(s)$ is per unit distance): $\lvert u_-\rvert \in \{1.693, 3.69, 1.928\} \times 10^{-3}$, mean $a = 2.44 \times 10^{-3}$; $u_+ \in \{1.504, 3.94, 0.992\} \times 10^{-3}$, mean $b = 2.15 \times 10^{-3}$. CV 0.3: $\mu_a = \ln(0.00244) = -6.016$, $\mu_b = \ln(0.00215) = -6.142$, $\sigma^2 = 0.0862$ each.
@@ -353,13 +363,13 @@ $f_M$ & Max force per mass & m s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ 
 $v_0$ & Initial velocity & m s$^{-1}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.609 & 0.223 \\
 $\sigma_{\max}$ & Peak aerobic power & m$^2$s$^{-3}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 3.931 & 0.0862 \\
 $z_2$ & $m_2 = e^{z_2}$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 6.908 & 0.0862 \\
-$z_{12}$ & $m_1 = m_2(1+e^{z_{12}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 0.199 & 0.0862 \\
-$z_{01}$ & $m_0 = m_1(1+e^{z_{01}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & $-1.047$ & 0.0862 \\
-$\beta_1$ & Warm-up steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$z_{02}$ & $m_0 = m_2(1+e^{z_{02}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 0.693 & 0.0862 \\
+$\beta_1$ & Warm-up steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.565 & 0.223 \\
 $\beta_2$ & Fall-off steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
 $a$ & Max downward slew & m$^{-1}$s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-6.016$ & 0.0862 \\
 $b$ & Max upward slew & m$^{-1}$s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-6.142$ & 0.0862 \\
 $\varphi_T$ & Terminal reserve frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(1.5, 12)$ & 0.11 & --- \\
+$\varphi_\sigma$ & Fall-off floor frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(16, 4)$ & 0.80 & --- \\
 $\phi_{f,\min}$ & Residual cap frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(7, 3)$ & 0.70 & --- \\
 $m_f^*$ & Cap half-activation & m$^2$s$^{-2}$ & $(0, m_0)$ & $\ln\!\frac{m_0 x}{m_0 - x}$ & LB$(3, 7)$ & 0.30 & --- \\
 $\kappa_f$ & Cap fatigue steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\

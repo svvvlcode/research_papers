@@ -59,15 +59,15 @@ Stage 0 is the full forward system (companion note, \S10) with its late-race and
 
 \paragraph{What is kept.} The two devices that make the system well-behaved survive untouched. The log reserve $u = \ln(m/m_0)$ keeps $m > 0$ structurally. The force is the convex blend $f = \sigma(m)/v + (f_M - \sigma(m)/v)\,\sigmoid(\psi)$, floored at the aerobic-supply-equivalent force $\sigma/v$ and capped at $f_M$, so $f \in (\sigma/v, f_M)$ structurally \emph{and} the reserve drains monotonically (\S\ref{sec:forward}); the logit variable $\psi$ now sets the fraction of the way from floor to cap rather than from zero to cap. So does the smooth hump-shaped aerobic supply $\sigma(m)$ and its derivative,
 \begin{equation}\label{eq:sigma}
-\sigma(m) = \sigma_{\max}\, g_1(m)\, g_2(m), \qquad
+\sigma(m) = \sigma_{\max}\, g_1(m)\, \bigl[\varphi_\sigma + (1 - \varphi_\sigma)\, g_2(m)\bigr], \qquad
 g_1(m) = \frac{1}{1 + e^{\beta_1(m - m_1)/m_0}}, \quad
 g_2(m) = \frac{1}{1 + e^{-\beta_2(m - m_2)/m_0}},
 \end{equation}
 \begin{equation}\label{eq:sigmaprime}
-\sigma'(m) = \frac{\sigma(m)}{m_0}\bigl[\beta_2\, w_2(m) - \beta_1\, w_1(m)\bigr], \qquad
-w_1 = 1 - g_1, \quad w_2 = 1 - g_2,
+\sigma'(m) = \frac{\sigma_{\max}}{m_0}\, g_1(m)\bigl[-\beta_1\, w_1(m)\, S(m) + (1 - \varphi_\sigma)\,\beta_2\, g_2(m)\, w_2(m)\bigr], \quad
+S = \varphi_\sigma + (1 - \varphi_\sigma) g_2, \; w_i = 1 - g_i,
 \end{equation}
-with $0 < m_2 < m_1 < m_0$ and $\beta_1, \beta_2 > 0$ exactly as in the companion note.
+with the fall-off floor $\varphi_\sigma = \sigma_f/\sigma_{\max} \in (0, 1)$, the gates, and $0 < m_2 < m_1 < m_0$, $\beta_1, \beta_2 > 0$ exactly as in the companion note. The warm-up threshold $m_1$ is derived from the start pin $\sigma(m_0) = \tfrac13\sigma_{\max}$ (companion note), not sampled; $m_2$ and $m_0$ are the two free reserve masses.
 
 \section{The Stage 0 Forward System}\label{sec:forward}
 
@@ -132,9 +132,9 @@ unchanged from the companion note. The single dispersion $\eta$ sets the per-sec
 
 \section{Stage 0 Parameters}\label{sec:params}
 
-Eleven parameters survive the reduction: the two mechanical constants $\tau, f_M$; the gate speed $v_0$ and the finishing fraction $\varphi_T$; the peak aerobic power $\sigma_{\max}$ and the reserve latents $z_2, z_{12}, z_{01}$ (which build $0 < m_2 < m_1 < m_0$ by construction) together with the knee steepnesses $\beta_1, \beta_2$; and the likelihood dispersion $\eta$. The gate force $f_0$ is no longer a parameter --- it is derived from the boundary-value solve \eqref{eq:f0-derived} --- and $\varphi_T$ takes its place, entering as the terminal condition $u(D) = \ln\varphi_T$. The nine parameters tied to the switched-off blocks --- $d, \varepsilon, \alpha$ (discount) and $\phi_{f,\min}, m_f^*, \kappa_f, \phi_{b,\min}, m_b^*, \kappa_b$ (fatigue) --- are absent. The slew rates $a, b$ are outside the table too, but for a different reason: the saturation is \emph{on}, with $a, b$ held at fixed numerical values (\S\ref{sec:forward}) rather than sampled, so the verbatim prior table below is untouched.
+Eleven parameters survive the reduction: the two mechanical constants $\tau, f_M$; the gate speed $v_0$ and the finishing fraction $\varphi_T$; the peak aerobic power $\sigma_{\max}$, the reserve latents $z_2, z_{02}$ (which build $0 < m_2 < m_0$ by construction, with the warm-up threshold $m_1$ derived from the start pin) and the fall-off floor $\varphi_\sigma$, together with the knee steepnesses $\beta_1, \beta_2$; and the likelihood dispersion $\eta$. The gate force $f_0$ is no longer a parameter --- it is derived from the boundary-value solve \eqref{eq:f0-derived} --- and $\varphi_T$ takes its place, entering as the terminal condition $u(D) = \ln\varphi_T$. The nine parameters tied to the switched-off blocks --- $d, \varepsilon, \alpha$ (discount) and $\phi_{f,\min}, m_f^*, \kappa_f, \phi_{b,\min}, m_b^*, \kappa_b$ (fatigue) --- are absent. The slew rates $a, b$ are outside the table too, but for a different reason: the saturation is \emph{on}, with $a, b$ held at fixed numerical values (\S\ref{sec:forward}) rather than sampled, so the verbatim prior table below is untouched.
 
-Priors are inherited verbatim from the companion note (\S12); Stage 0 introduces no new hyperparameters. Inference is performed on the unconstrained transformed scale: $\ln$ for strictly positive parameters, the logit-with-scale transform $\ln(c\,x/(c - x))$ for parameters bounded in $(0, c)$, and the identity for the real-valued reserve latents, where $m_2 = e^{z_2}$, $m_1 = m_2(1 + e^{z_{12}})$, $m_0 = m_1(1 + e^{z_{01}})$. For the normal priors the center column is the mean $\mu$ and the spread is the variance $\sigma^2$ on the transformed scale; for the LogisticBeta (LB) priors the center is the prior mean on the natural scale and the spread is implicit in the Beta parameters.
+Priors are inherited verbatim from the companion note (\S12); Stage 0 introduces no new hyperparameters. Inference is performed on the unconstrained transformed scale: $\ln$ for strictly positive parameters, the logit-with-scale transform $\ln(c\,x/(c - x))$ for parameters bounded in $(0, c)$, and the identity for the real-valued reserve latents, where $m_2 = e^{z_2}$ and $m_0 = m_2(1 + e^{z_{02}})$; the warm-up threshold $m_1$ is derived from the start pin (companion note) rather than sampled, and the fall-off floor $\varphi_\sigma$ takes the logit-with-scale transform. For the normal priors the center column is the mean $\mu$ and the spread is the variance $\sigma^2$ on the transformed scale; for the LogisticBeta (LB) priors the center is the prior mean on the natural scale and the spread is implicit in the Beta parameters.
 
 \begin{small}
 \begin{longtable}{@{}p{1.7cm}p{3.4cm}p{0.9cm}p{1.4cm}p{1.6cm}p{2.1cm}p{1.0cm}p{0.9cm}@{}}
@@ -151,11 +151,11 @@ $\tau$ & Friction timescale & s & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.324 
 $f_M$ & Max force per mass & m s$^{-2}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.635 & 0.0862 \\
 $v_0$ & Initial velocity & m s$^{-1}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 1.609 & 0.223 \\
 $\varphi_T$ & Terminal reserve frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(1.5, 12)$ & 0.11 & --- \\
+$\varphi_\sigma$ & Fall-off floor frac. & --- & $(0, 1)$ & $\ln\!\frac{x}{1-x}$ & LB$(16, 4)$ & 0.80 & --- \\
 $\sigma_{\max}$ & Peak aerobic power & m$^2$s$^{-3}$ & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 3.931 & 0.0862 \\
 $z_2$ & $m_2 = e^{z_2}$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 6.908 & 0.0862 \\
-$z_{12}$ & $m_1 = m_2(1+e^{z_{12}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 0.199 & 0.0862 \\
-$z_{01}$ & $m_0 = m_1(1+e^{z_{01}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & $-1.047$ & 0.0862 \\
-$\beta_1$ & Warm-up steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
+$z_{02}$ & $m_0 = m_2(1+e^{z_{02}})$ & --- & $\mathbb{R}$ & id & $\mathcal{N}$ & 0.693 & 0.0862 \\
+$\beta_1$ & Warm-up steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.565 & 0.223 \\
 $\beta_2$ & Fall-off steepness & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & 2.303 & 0.223 \\
 $\eta$ & Gamma dispersion & --- & $(0, \infty)$ & $\ln$ & $\mathcal{N}$ & $-4.605$ & 0.223 \\
 \bottomrule
@@ -241,7 +241,8 @@ $t' \gets 1/v$ \tcp*{cumulative time, for sector read-off}
 \caption{\texttt{solve\_forward} --- sector means by Hermite--Simpson collocation}
 \KwIn{parameters $\theta$; sector edges $s_0 < s_1 < \cdots < s_J$}
 \KwOut{sector means $\dt = (\dt_1, \dots, \dt_J)$}
-$(m_2, m_1, m_0) \gets \texttt{reserve\_from\_latents}(z_2, z_{12}, z_{01})$ \;
+$(m_2, m_0) \gets \texttt{reserve\_from\_latents}(z_2, z_{02})$ \;
+$m_1 \gets \texttt{pin\_warmup}(\beta_1, \beta_2, m_2, m_0, \varphi_\sigma)$ \tcp*{start pin: $\sigma(m_0) = \tfrac13\sigma_{\max}$}
 $u_T \gets \ln \varphi_T$ \tcp*{terminal reserve, \eqref{eq:bc}}
 $\text{mesh} \gets$ split each sector into equal steps $\leq \texttt{max\_step\_m}$ \tcp*{edges land on nodes}
 $Y \gets$ ramped initial guess on the mesh \tcp*{$v$: gate$\to$cruise, $u$: $0 \to u_T$, $\psi$: $\logit 0.7$}
