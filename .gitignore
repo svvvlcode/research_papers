@@ -16,3 +16,6 @@
 # Editor / OS cruft
 .DS_Store
 Thumbs.db
+
+# Local AI scratch (Claude answer log — not part of the corpus)
+claude-answers.md
