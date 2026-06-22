@@ -1,0 +1,626 @@
+% =============================================================================
+% SVVVL Research Paper — Higher-Order Root Finding via Scale Ratios
+% House-style preamble (shared); edit content, not the preamble.
+% =============================================================================
+
+\documentclass[11pt]{article}
+
+% ----- Page geometry -------------------------------------------------------
+\usepackage[
+  letterpaper,
+  top=0.9in,
+  bottom=0.9in,
+  left=0.85in,
+  right=0.85in,
+  headheight=14pt
+]{geometry}
+
+% ----- Encoding & language -------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+
+
+% ----- Typography ----------------------------------------------------------
+\usepackage{XCharter}
+
+% Section headings
+\usepackage{titlesec}
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.6em}
+\titlespacing*{\subsection}{0pt}{1.1em}{0.4em}
+
+% Remove section numbering
+\setcounter{secnumdepth}{0}
+
+% ----- Spacing & paragraphs ------------------------------------------------
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parskip}{0.6em}
+\setlength{\parindent}{0pt}
+
+% ----- Graphics & color ----------------------------------------------------
+\usepackage{graphicx}
+\usepackage{xcolor}
+\definecolor{linkcolor}{HTML}{1F4E79}
+
+% ----- Hyperlinks ----------------------------------------------------------
+\usepackage[
+  colorlinks=true,
+  linkcolor=linkcolor,
+  urlcolor=linkcolor,
+  citecolor=linkcolor
+]{hyperref}
+
+% ----- Tables, figures, captions ------------------------------------------
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\captionsetup{font=small, labelfont=bf, skip=6pt}
+
+% ----- Math ----------------------------------------------------------------
+\usepackage{amsmath, amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+
+% ----- Footnotes -----------------------------------------------------------
+\usepackage[hang, flushmargin]{footmisc}
+\setlength{\footnotesep}{0.8em}
+
+% ----- Headers & footers ---------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\thepage}
+
+\fancypagestyle{firstpage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+}
+
+
+% ----- Logo lockup ---------------------------------------------------------
+\newcommand{\WORDMARKFILE}{../../assets/SVVVL_Research_Wordmark.pdf}
+\newcommand{\WORDMARKWIDTH}{1.5in}
+\newcommand{\LOCKUPGAP}{0.01in}
+
+% The lockup itself: symbol above wordmark, both centered within a box
+% the width of the symbol so the wordmark sits naturally beneath it.
+\newcommand{\logolockup}{%
+  \begin{minipage}{\WORDMARKWIDTH}
+    \centering
+    \includegraphics[width=\WORDMARKWIDTH]{\WORDMARKFILE}
+  \end{minipage}%
+}
+
+% Title block command: \makecover{Title}{Subtitle}{Authors}{Date}
+\newcommand{\makecover}[4]{%
+  \thispagestyle{firstpage}%
+  \noindent\logolockup\par
+  \vspace{2.2em}
+  {\fontsize{26pt}{30pt}\selectfont\bfseries
+   \hyphenpenalty=10000\exhyphenpenalty=10000\sloppy
+   #1\par}
+  \vspace{0.6em}
+  {\fontsize{15pt}{18pt}\selectfont\itshape\color{black!70}
+   \hyphenpenalty=10000\exhyphenpenalty=10000\sloppy
+   #2\par}
+  \vspace{1.6em}
+  {\normalsize\color{black!60} #3\par}
+  \vspace{0.2em}
+  {\normalsize\color{black!60} #4\par}
+  \vspace{1.8em}
+}
+
+% ----- Theorem environments ------------------------------------------------
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+
+% ----- Custom commands -----------------------------------------------------
+% General-purpose math operators reused across papers.
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Corr}{\mathrm{Corr}}
+\newcommand{\dd}{\mathrm{d}}
+% Paper-specific notation: characteristic length scales and their ratios.
+\newcommand{\Lf}{L_{f}}                 % leading length scale f/f'
+\newcommand{\Lk}[1]{L_{#1}}             % L_k = f^{(k)}/f^{(k+1)}
+\newcommand{\rr}{\rho}                  % scale ratio
+\newcommand{\order}{d}                  % method order parameter
+
+% =============================================================================
+\begin{document}
+% =============================================================================
+
+% --- COVER -------------------------------------------------------------------
+\makecover
+  {Higher-Order Root Finding as a Hierarchy of Scales}
+  {Newton, Halley, and the Householder family read off the characteristic
+   length scales of a function}
+  {J.~E. Whitehead~III\footnote{SVVVL, Towson, MD, United States.
+   Contact: \href{mailto:james.whitehead@svvvl.com}{james.whitehead@svvvl.com}.
+   See Disclosures at the end of this document.}}
+  {\today}
+
+% --- ABSTRACT ----------------------------------------------------------------
+\begin{quote}
+\itshape
+Newton's method steps by $-f/f'$. Read $f/f'$ as a length, not as a ratio of
+derivatives: it is the characteristic scale $\Lf$ of the exponential that matches
+$f$ at the current point, so Newton steps one scale-length toward the root. Every
+higher-order method is that same step, corrected for how the scale drifts as you
+move. We make the correction explicit and read off three pictures of it. Define a
+tower of scales $\Lk{k}=f^{(k)}/f^{(k+1)}$ and the ratios $\rr_k=\Lk{k-1}/\Lk{k}$
+between rungs. Halley is Newton divided by $1-\tfrac12\rr_1$; the order-$\order$
+Householder method is $\Lf$ times a fixed rational function of
+$\rr_1,\dots,\rr_{\order-1}$ --- one continued fraction, read one rung deeper at
+each order. The step is a clock, the time-to-contact of a particle closing on a
+target; and because a root of $f$ is a pole of $1/f$, it is the ratio test ranging
+to that pole. We close with a root finder that needs only the recursion for the
+coefficients of $1/f$ and one ratio per step.
+\end{quote}
+
+
+\newpage
+% --- INTRODUCTION ------------------------------------------------------------
+\section{Newton's method is a statement about length}
+
+Newton's method updates a guess $x_t$ for a root of $f$ by
+\begin{equation}
+  x_{t+1} = x_t - \frac{f(x_t)}{f'(x_t)}
+          = x_t - \frac{1}{\,f'(x_t)/f(x_t)\,}.
+  \label{eq:newton}
+\end{equation}
+The textbook reading is algebraic: solve the local linear model
+$f(x)+f'(x)(y-x)=0$ for its zero. Here is a different reading, the one that
+generalizes. The ratio $f'/f$ is the logarithmic derivative, and it has units of
+inverse length. So its reciprocal,
+\begin{equation}
+  \Lf(x) \;\coloneqq\; \frac{f(x)}{f'(x)},
+  \label{eq:Lf}
+\end{equation}
+is a length --- and it is \emph{the} length built into $f$ at $x$. Fit a local
+exponential $f(y)\approx A\,e^{y/L}$ to the value and slope of $f$ at $x$, and the
+fit hands back $L=\Lf(x)$, because $g/g'=L$ everywhere for $g=A\,e^{y/L}$. So $\Lf$
+is the distance over which $f$ changes by a factor of $e$, and Newton's
+rule~\eqref{eq:newton} reads:
+
+\begin{quote}
+\itshape
+Step one characteristic length toward the root: $x_{t+1}=x_t-\Lf(x_t)$.
+\end{quote}
+
+That is more than a mnemonic. The exponential is the one function whose scale never
+changes, and it is exactly the function on which a single scale-length is the right
+unit of progress. Real functions have a scale that drifts as $x$ moves, and that
+drift is what Newton's first-order step gets wrong. Every higher-order method is
+bookkeeping for the drift.
+
+Here is the plan. Section~2 makes the drift quantitative. Section~3 shows Halley is
+Newton with the first drift correction. Section~4 reads the step as a clock --- the
+physical heart of the paper. Section~5 writes the whole Householder family as one
+continued fraction in the scale ratios. Section~6 turns the integer order into a
+continuous dial and finds the root sitting where $1/f$ blows up. Section~7 folds all
+of it into an algorithm you can run. Don't worry if the length picture feels loose
+now; each section sharpens it.
+
+% --- THE TOWER OF SCALES -----------------------------------------------------
+\section{The scale drifts, and that drift is what Newton misses}
+
+If $\Lf=f/f'$ is the scale of $f$, then $f'$ has its own scale $f'/f''$, and $f''$
+has $f''/f'''$, on up. Define the tower
+\begin{equation}
+  \Lk{k}(x) \;\coloneqq\; \frac{f^{(k)}(x)}{f^{(k+1)}(x)},
+  \qquad k=0,1,2,\dots,
+  \label{eq:tower}
+\end{equation}
+so $\Lk{0}=\Lf$ is the leading scale and each $\Lk{k}$ is the characteristic length
+of the $k$-th derivative. The same information as the derivatives $f,f',f'',\dots$,
+carried in the currency of lengths.
+
+A single length can't tell you how the scale is changing; for that you need the
+dimensionless ratio between neighboring rungs,
+\begin{equation}
+  \rr_k(x) \;\coloneqq\; \frac{\Lk{k-1}(x)}{\Lk{k}(x)},
+  \qquad k=1,2,\dots.
+  \label{eq:ratio}
+\end{equation}
+The first one is worth seeing in full:
+\begin{equation}
+  \rr_1 \;=\; \frac{\Lk{0}}{\Lk{1}}
+        \;=\; \frac{f/f'}{f'/f''}
+        \;=\; \frac{f\,f''}{(f')^{2}}.
+  \label{eq:rho1}
+\end{equation}
+Two reference functions fix its meaning. For a \emph{line} $f=a(x-x^\star)$ we have
+$f''=0$, so $\rr_1=0$: the scale isn't bending. For an \emph{exponential}
+$f=e^{x/L}$ every rung equals $L$ and every $\rr_k=1$: the scale is perfectly
+self-similar. In between, $\rr_1$ measures how far $f$ has bent from a straight line
+toward an exponential.
+
+Now the one quantity Newton ignores. Differentiate the leading scale~\eqref{eq:Lf}:
+\begin{equation}
+  \Lf'(x)
+   = \frac{(f')^2 - f f''}{(f')^2}
+   = 1 - \frac{f f''}{(f')^2}
+   = 1 - \rr_1.
+  \label{eq:drift}
+\end{equation}
+\textbf{The leading scale drifts at rate $\Lf'=1-\rr_1$.} In plain terms: Newton
+steps by $-\Lf$ as if $\Lf$ were the fixed distance to the root, but $\Lf$ moves as
+$x$ moves, and $\rr_1$ says how fast. A line has $\Lf'=1$ --- the scale equals the
+distance to the root and runs out right at it. An exponential has $\Lf'=0$ --- the
+scale never moves. So the first correction any second-order method makes can depend
+on nothing but $\rr_1$. That points straight at Halley.
+
+% --- HALLEY -----------------------------------------------------------------
+\section{Halley repairs the drift}
+
+Halley's second-order method, in these variables, is Newton with one correction
+factor:
+\begin{equation}
+  x_{t+1} = x_t - \frac{\Lf}{\,1 - \tfrac12\,\dfrac{\Lf}{\Lk{1}}\,}
+          = x_t - \frac{\Lf}{\,1 - \tfrac12\,\rr_1\,}.
+  \label{eq:halley}
+\end{equation}
+This is the standard Halley iteration~[\hyperlink{ref:4}{4},\,\hyperlink{ref:5}{5}].
+To see it, take the textbook form and divide top and bottom by $2(f')^2$:
+\begin{equation}
+  x_{t+1}
+   = x_t - \frac{2 f f'}{2 (f')^2 - f f''}
+   = x_t - \frac{f/f'}{\,1 - \dfrac{f f''}{2 (f')^2}\,}
+   = x_t - \frac{\Lf}{\,1 - \tfrac12\rr_1\,},
+  \label{eq:halley-derive}
+\end{equation}
+using~\eqref{eq:rho1} for the last step. Halley keeps Newton's direction --- the
+leading scale $\Lf$ --- and rescales the step by $1/(1-\tfrac12\rr_1)$, a factor
+built entirely from the first scale ratio. When $\rr_1>0$ (the scale shrinking ahead
+of the step) it lengthens Newton's step; when $\rr_1<0$ it shortens it.
+
+\textbf{Halley is Newton plus a first-order correction for the drift.} It accounts
+for how the length scale changes under the very step it is about to take. Before
+climbing to higher orders, look at what this step \emph{is}, physically.
+
+% --- KINEMATICS -------------------------------------------------------------
+\section{The kinematic reading: a clock counting down to contact}
+
+Why does $-f/f'$ keep showing up? Because it is a time.
+
+Picture $f$ along $x$ as the signed miss-distance of a particle closing on a target,
+with each step of $x$ playing the role of elapsed time. Then the local derivatives
+are the particle's state of motion: $f$ is position, $f'$ is velocity --- the closing
+rate --- $f''$ is acceleration, $f'''$ is jerk, and on up the tower.
+
+In those terms the characteristic length is a clock. Distance over closing rate is
+the first-order time to contact,
+\begin{equation}
+  \tau = -\frac{f}{f'} = -\Lf,
+  \label{eq:ttc}
+\end{equation}
+the same $-\Lf$ Newton steps by --- and the same quantity that visual guidance calls
+``$\tau$'' and missile guidance calls time-to-go~[\hyperlink{ref:7}{7}].
+
+\begin{quote}\itshape
+Newton steps by the time-to-contact at constant closing speed.
+\end{quote}
+
+The drift law says this clock keeps honest time. Since $\Lf'=1-\rr_1$, the
+time-to-contact changes with position at rate $\dd\tau/\dd x=\rr_1-1$, which is
+exactly $-1$ when the motion is uniform ($\rr_1=0$): advance one step, lose one tick.
+The dimensionless acceleration $\rr_1=f f''/(f')^2$ is the correction when the closing
+rate is not constant, and Halley~\eqref{eq:halley} folds it in:
+$\tau=\tau_1/(1-\tfrac12\rr_1)$ is the time-to-contact corrected for acceleration.
+Each higher order adds the next term of the motion --- order 3 the jerk, order 4 the
+snap --- so the order-$\order$ method reads the contact time off the kinematics
+through the $\order$-th derivative. The next section gives that family a single form.
+
+% --- THE HOUSEHOLDER FAMILY -------------------------------------------------
+\section{The whole family is one continued fraction}
+
+Newton and Halley are the first two rungs of one family. The order-$\order$
+Householder method is
+\begin{equation}
+  x_{t+1} = x_t + \order\,
+            \frac{\big(1/f\big)^{(\order-1)}}{\big(1/f\big)^{(\order)}},
+  \label{eq:householder}
+\end{equation}
+with $\order=1$ Newton and $\order=2$ Halley. Each member is a ratio of consecutive
+derivatives of $1/f$, and dividing through by the leading scale collapses all of that
+into the dimensionless ratios: the order-$\order$ step is $-\Lf$ times a fixed
+rational function of $\rr_1,\dots,\rr_{\order-1}$. The first three:
+\begin{align}
+  \text{Newton } (\order=1):\quad
+    & x_{t+1} = x_t - \Lf, \\[0.3em]
+  \text{Halley } (\order=2):\quad
+    & x_{t+1} = x_t - \Lf\,\frac{1}{\,1-\tfrac12\rr_1\,}, \\[0.3em]
+  \text{order } 3:\quad
+    & x_{t+1} = x_t - \Lf\,
+      \frac{1-\tfrac12\rr_1}{\,1-\rr_1+\tfrac16\rr_1^{2}\rr_2\,}.
+  \label{eq:order3}
+\end{align}
+The order-3 denominator is the one new piece; the numerator just repeats Halley.
+Carry the computation higher --- by hand it turns ugly, so we ran it in a
+computer-algebra system through order 5 --- and a clean pattern shows up. Define a
+sequence of polynomials in the scale ratios,
+\begin{align}
+  P_0 = P_1 &= 1, \notag\\
+  P_2 &= 1 - \tfrac12\rr_1, \notag\\
+  P_3 &= 1 - \rr_1 + \tfrac16\rr_1^2\rr_2.
+  \label{eq:Ppolys}
+\end{align}
+In terms of these, the order-$\order$ step is just
+\begin{equation}
+  x_{t+1} = x_t - \Lf\,\frac{P_{\order-1}}{P_\order}.
+  \label{eq:hhstep}
+\end{equation}
+\textbf{The numerator at each order is the denominator of the order before.} So the
+family is one continued fraction in the scale ratios, read one rung deeper at each
+order --- not a list of separate tricks. Each order folds in exactly one new ratio,
+$\rr_{\order-1}$, riding the first scale that needs the $\order$-th derivative.\footnote{%
+The whole table closes to one formula, $P_\order=(-\Lf)^{\order}\,f\,(1/f)^{(\order)}/\order!$,
+which is just ``take one more derivative of $1/f$'' said in the scale variables. Its
+coefficients are a sum over the partitions of $\order$ by Fa\`a di Bruno's
+formula~[\hyperlink{ref:6}{6}]; we verified the telescoping through order~7.}
+
+One case makes the structure vivid. On a pure exponential every rung equals $L$,
+every $\rr_k=1$, and $P_\order=1/\order!$, so~\eqref{eq:hhstep} gives a step of
+$-\Lf\,(1/(\order-1)!)\big/(1/\order!)=-\order\,\Lf$. Each order buys one more
+e-folding of progress on the scale-invariant function. That raises the obvious
+question: turn the order up without limit, and where does the step land?
+
+% --- POLE / CONTINUUM -------------------------------------------------------
+\section{A root is a pole, and the order is a dial you can turn}
+
+To answer it, look at what the step actually computes. Write the Taylor coefficients
+of $f$ and of $1/f$ about $x$ as $f_n=f^{(n)}(x)/n!$ and $g_n=(1/f)^{(n)}(x)/n!$. Then
+the order-$\order$ step~\eqref{eq:householder} is exactly the ratio of two consecutive
+coefficients of $1/f$,
+\begin{equation}
+  \mathrm{step}_\order
+   = \order\,\frac{(1/f)^{(\order-1)}}{(1/f)^{(\order)}}
+   = \frac{g_{\order-1}}{g_\order}.
+  \label{eq:ratiostep}
+\end{equation}
+And those coefficients come free from one identity, $f\cdot(1/f)=1$, read off order by
+order:
+\begin{equation}
+  \sum_{k=0}^{n} f_k\,g_{n-k} = \delta_{n,0}.
+  \label{eq:convorth}
+\end{equation}
+This solves from the top down for each $g_n$ in terms of the coefficients already in
+hand --- the recursion the algorithm in Section~7 will use.
+
+Now the picture. A root of $f$ is a pole of $1/f$.
+
+\begin{quote}\itshape
+The Householder step is the ratio test ranging to that pole.
+\end{quote}
+
+Here is why, made concrete. Near a simple root $x^\star$, the reciprocal $1/f$ has a
+simple pole, and its coefficients about $x$ grow like
+$g_n\propto(x^\star-x)^{-(n+1)}$. Their ratio is the distance itself,
+$g_{\order-1}/g_\order\to x^\star-x$ --- the ratio test for the radius of
+convergence, which is the distance to the nearest singularity. With more than one
+root, the step is a moment-ratio estimate of the nearest, sharpening as the order
+climbs onto higher coefficients. Table~\ref{tab:ratiotest} shows it homing in for
+$f=(x-3)(x-7)$ started at $x=0$.
+
+\begin{table}[ht]
+\centering
+\caption{The step $g_{\order-1}/g_\order$ for $f=(x-3)(x-7)$ started at $x=0$, homing
+onto the nearest root $x^\star=3$. Newton ($\order=1$) undershoots because the far
+root at $7$ still pulls; each higher order leans on higher coefficients of $1/f$ and
+ranges the near root more sharply.}
+\label{tab:ratiotest}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{l c c c c c c c}
+\toprule
+order $\order$ & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+\midrule
+$g_{\order-1}/g_\order$ & 2.100 & 2.658 & 2.860 & 2.941 & 2.975 & 2.989 & 2.995 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+That convergence has a closed-form limit, and finding it is where the continuous
+order comes in. The only discrete thing in the whole construction is the factorial
+$\order!$. And the factorial is already an integral,
+\begin{equation}
+  \order! = \Gamma(\order+1) = \int_0^\infty u^{\order}\,e^{-u}\,\dd u,
+  \label{eq:gamma}
+\end{equation}
+the $\order$-th moment of a unit-rate exponential. Replace $\order!$ by
+$\Gamma(\order+1)$ and the order becomes a knob you can turn to any real value, even
+to infinity.
+
+Turn it. Near the root, write $\lambda=x^\star-x$ for the distance. The coefficients
+$g_n=\lambda^{-(n+1)}$ are the normalized moments of an exponential density of rate
+$\lambda$, and summing them rebuilds $1/f$ as that density's Laplace
+transform~[\hyperlink{ref:8}{8}],
+\begin{equation}
+  \sum_{n\ge0} g_n\,s^{n}
+   = \int_0^\infty e^{-\lambda u}\,e^{s u}\,\dd u
+   = \frac{1}{\lambda-s}
+   = \frac{1}{f(x+s)}.
+  \label{eq:mgf}
+\end{equation}
+Push the order to any real $\nu$ and the gamma cancels, leaving the step equal to the
+distance at every order:
+\begin{equation}
+  g_\nu = \frac{1}{\Gamma(\nu+1)}\int_0^\infty u^{\nu}\,e^{-\lambda u}\,\dd u
+        = \lambda^{-(\nu+1)},
+  \qquad
+  \frac{g_{\nu-1}}{g_\nu} = \lambda = x^\star-x.
+  \label{eq:contstep}
+\end{equation}
+\textbf{On a pure pole the method is exact the moment you write it down.}
+
+A general $f$ is not a single pole. But for analytic $f$ the reciprocal $1/f$ is
+meromorphic --- a pole at every root --- and its partial-fraction expansion writes it
+as the Laplace transform of one exponential per root, each decaying at the rate of its
+own distance $\lambda_j=x^\star_j-x$ and weighted by the residue $w_j$ of $1/f$ there:
+\begin{equation}
+  \frac{1}{f(x+s)} = \sum_j \frac{w_j}{\lambda_j-s}
+   = \int_0^\infty e^{su}\sum_j w_j\,e^{-\lambda_j u}\,\dd u,
+  \qquad
+  g_n = \sum_j w_j\,\lambda_j^{-(n+1)}.
+  \label{eq:spectral}
+\end{equation}
+Each coefficient is a residue-weighted blend of modes, and the step leans on the
+slowest --- the nearest root --- ever harder as the order climbs.\footnote{This needs
+analyticity, not mere smoothness: a $C^\infty$ but non-analytic $f$ has no convergent
+local series. The spectral weights are in general signed, even complex, not a
+probability density, and the one-sided transform is cleanest for roots ahead of $x$.
+For $f=(x-3)(x-7)$ about $x=0$ the two modes are $\tfrac14 e^{-3u}$ and
+$-\tfrac14 e^{-7u}$, and the near one wins (Table~\ref{tab:ratiotest}). A root of
+multiplicity $m$ contributes an Erlang mode $u^{m-1}e^{-\lambda u}$; a
+complex-conjugate pair, a damped oscillation.} That is why the integer steps in the
+Table climb toward $\lambda$: $2.100\to2.995$ onto the root at $x^\star=3$, now with a
+limit you can name.
+
+This closes the circle. The exponential was the one function with a single fixed scale
+and no drift --- every $\rr_k=1$, the fixed point of Section~2. It returns here as the
+\emph{law} whose Laplace transform is $1/f$ near the root: the same function at both
+ends, once as the shape Newton steps along, once as the distribution the step reads.
+
+% --- ALGORITHM --------------------------------------------------------------
+\section{An algorithm: step by the ratio test}
+
+Everything above turns into a short loop. The order-$\order$ Householder method never
+needs the symbolic $\order$-th derivative of $1/f$; it needs only the coefficients
+$g_n$, and those come from the recursion~\eqref{eq:convorth} in $O(\order^2)$ work. The
+step is one ratio.
+
+\begin{quote}
+\ttfamily
+\textbf{input} $x$, order $\order$, tolerance $\varepsilon$, cap $N$\\[0.3em]
+\textbf{repeat}\\
+\hspace*{1.5em}$f_k \gets f^{(k)}(x)/k!$ \quad for $k=0,\dots,\order$\\
+\hspace*{1.5em}$g_0 \gets 1/f_0$\\
+\hspace*{1.5em}$g_n \gets -\,f_0^{-1}\textstyle\sum_{k=1}^{n} f_k\,g_{n-k}$ \quad for $n=1,\dots,\order$\\
+\hspace*{1.5em}$\Delta \gets g_{\order-1}\,/\,g_\order$\\
+\hspace*{1.5em}$x \gets x + \Delta$\\
+\textbf{until} $|\Delta| < \varepsilon$ \ \textbf{or} \ iterations $> N$\\[0.3em]
+\textbf{return} $x$
+\end{quote}
+
+Three notes make it practical. \emph{Firstly}, the cost per iteration is the $\order$
+derivatives of $f$ plus an $O(\order^2)$ convolution --- cheap, and the same
+derivatives any high-order method would want. \emph{Secondly}, the order $\order$ is
+yours to set, and it buys convergence speed:
+
+\begin{proposition}[Convergence order]
+If $x^\star$ is a simple root of a sufficiently smooth $f$, the order-$\order$
+iteration~\eqref{eq:householder} converges locally with order $\order+1$: Newton
+quadratically, Halley cubically, order 3 quartically.
+\label{prop:conv}
+\end{proposition}
+
+We don't reprove this classical fact; see Householder~[\hyperlink{ref:1}{1}] and
+Traub~[\hyperlink{ref:2}{2}]. The structural reason is the one the paper has been
+making: the order-$\order$ step uses the scales $\Lk{0},\dots,\Lk{\order-1}$ ---
+derivatives through $f^{(\order)}$ --- and cancels the error in the
+distance-to-root expansion through that order. One more scale, one more ratio, one
+more order of convergence; and, on the exponential, one more e-folding.
+
+\emph{Thirdly}, the coefficients carry their own diagnostic. The ratios
+$g_0/g_1,\,g_1/g_2,\,\dots,\,g_{\order-1}/g_\order$ --- the row of
+Table~\ref{tab:ratiotest} --- should settle onto a single value as $n$ grows, and that
+value is the distance to the nearest root. How fast they settle tells you whether the
+order is high enough to trust the step; when they have not settled, the nearest root
+has competition, and raising $\order$ sharpens the estimate.
+
+\textbf{Build the coefficients of $1/f$, take their last ratio, step. That is the
+whole method.}
+
+% --- CONCLUSION --------------------------------------------------------------
+\section{Conclusion}
+
+Read $f/f'$ as a length and the classical root finders line up as one idea. Newton
+steps one characteristic scale toward the root. The scale drifts at rate $1-\rr_1$,
+and Halley divides by $1-\tfrac12\rr_1$ to correct for it. The order-$\order$
+Householder method is the same leading scale $\Lf$ rescaled by a fixed rational
+function of the consecutive ratios $\rr_1,\dots,\rr_{\order-1}$ --- one continued
+fraction, one rung deeper per order. That single step wears three faces: a clock
+reading the time-to-contact of a particle closing on a target; on a pure exponential
+the clean $-\order\,\Lf$, one e-folding per order; and, because a root of $f$ is a
+pole of $1/f$, the ratio test ranging to that pole. Turn that last reading into a loop
+--- build the coefficients of $1/f$, take their last ratio, step --- and you have a
+root finder whose order is a dial. Higher-order root finding is reading the hierarchy
+of a function's own length scales one rung deeper.
+
+\newpage
+% --- REFERENCES --------------------------------------------------------------
+\section{Further Reading and References}
+
+\begin{itemize}\setlength{\itemsep}{0.4em}
+
+  \item[{[1]}]\hypertarget{ref:1}{} Householder, A.~S. (1970).
+    \textit{The Numerical Treatment of a Single Nonlinear Equation.}
+    McGraw-Hill, New York.
+
+  \item[{[2]}]\hypertarget{ref:2}{} Traub, J.~F. (1964).
+    \textit{Iterative Methods for the Solution of Equations.}
+    Prentice-Hall, Englewood Cliffs, NJ.
+
+  \item[{[3]}]\hypertarget{ref:3}{} Ostrowski, A.~M. (1966).
+    \textit{Solution of Equations and Systems of Equations.}
+    2nd ed., Academic Press, New York.
+
+  \item[{[4]}]\hypertarget{ref:4}{} Gander, W. (1985).
+    ``On Halley's Iteration Method.''
+    \textit{American Mathematical Monthly}, 92(2), 131--134.
+
+  \item[{[5]}]\hypertarget{ref:5}{} Halley, E. (1694).
+    ``Methodus nova accurata \& facilis inveniendi radices
+    \ae quationum quarumcumque generaliter, sine praevia reductione.''
+    \textit{Philosophical Transactions of the Royal Society of London},
+    18, 136--148.
+
+  \item[{[6]}]\hypertarget{ref:6}{} Comtet, L. (1974).
+    \textit{Advanced Combinatorics: The Art of Finite and Infinite Expansions.}
+    Reidel, Dordrecht. (Fa\`a di Bruno's formula and Bell polynomials.)
+
+  \item[{[7]}]\hypertarget{ref:7}{} Lee, D.~N. (1976).
+    ``A theory of visual control of braking based on information about
+    time-to-collision.'' \textit{Perception}, 5(4), 437--459.
+
+  \item[{[8]}]\hypertarget{ref:8}{} Widder, D.~V. (1941).
+    \textit{The Laplace Transform.} Princeton University Press, Princeton, NJ.
+
+\end{itemize}
+
+\newpage
+% --- DISCLOSURES -------------------------------------------------------------
+\section{Disclosures}
+
+The views expressed in this document are those of the author and
+SVVVL alone and do not constitute investment, legal, tax, or
+accounting advice. This document is provided for informational and
+research purposes only and is not an offer or solicitation to buy or
+sell any security or financial product.
+
+The framework presented is theoretical and relies on idealized
+assumptions that do not hold in practice. The results
+should not be implemented in a real portfolio without additional
+constraints and considerations not addressed in this paper.
+
+While reasonable care has been taken in the preparation of this
+document, no representation or warranty, express or implied, is made
+as to its accuracy or completeness.
+
+Reading this document does not create an advisory, fiduciary, or
+client relationship of any kind between the reader and SVVVL or the
+author.
+
+\end{document}
